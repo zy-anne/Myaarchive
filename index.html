@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <!-- Set before the stylesheet loads, using the theme main.js resolved
+       pre-launch (exposed synchronously by preload.js), so the correct
+       palette is active on first paint instead of flashing light-then-dark. -->
+  <script>document.documentElement.setAttribute('data-theme', window.initialTheme || 'dark');</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Personal reading library — track titles, volumes, and characters">
+  <title>Myaarchive</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&family=Inter:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <!-- ── Auth Gate ─────────────────────────────────────────────────────
+       Shown until main.js confirms a signed-in user. Not a modal overlay
+       (those live inside #app and assume the library is already loaded);
+       this sits on top of everything, full-screen, and is hidden once
+       auth:signedIn fires. -->
+  <div id="auth-gate">
+    <div class="auth-gate-card">
+      <span class="brand-name">Myaarchive</span>
+      <p id="auth-gate-status">Sign in to access your library.</p>
+      <button class="btn btn-primary" id="btn-auth-signin">Sign In</button>
+    </div>
+  </div>
+
+  <div id="app" class="hidden">
+    <!-- ── Titlebar & Drag Region ────────────────────────────── -->
+    <div id="titlebar">
+      <div class="window-controls">
+        <button class="win-btn" id="win-btn-minimize" title="Minimize" aria-label="Minimize">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round">
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>
+        <button class="win-btn" id="win-btn-maximize" title="Maximize" aria-label="Maximize">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round">
+            <rect x="4" y="4" width="16" height="16" rx="2" />
+          </svg>
+        </button>
+        <button class="win-btn win-btn-close" id="win-btn-close" title="Close" aria-label="Close">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Sidebar ───────────────────────────────────────────── -->
+    <nav id="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-name">Myaarchive</span>
+      </div>
+      <div class="sidebar-nav">
+        <div id="sidebar-nav-list"></div>
+        <button class="nav-add-library" id="btn-add-library">+ Add Category</button>
+      </div>
+      <div class="sidebar-footer">
+        <button class="nav-item" id="btn-theme-toggle">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            id="theme-toggle-icon">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+          <span id="theme-toggle-label">Dark Mode</span>
+        </button>
+        <button class="nav-item" id="btn-export-json">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Export JSON
+        </button>
+        <button class="nav-item" id="btn-export-pdf">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+          </svg>
+          Export PDF
+        </button>
+        <button class="nav-item" id="btn-auth-signout">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+          Sign Out
+        </button>
+      </div>
+    </nav>
+
+    <!-- ── Main Content ──────────────────────────────────────── -->
+    <main id="main-content">
+
+      <!-- Library View -->
+      <section id="view-library" class="view active">
+        <header class="view-header">
+          <div class="header-left">
+            <h1 class="view-title" id="library-title">My Library</h1>
+            <button class="btn-icon-edit" id="btn-customize-title" title="Customize icon &amp; name">✎</button>
+            <span id="series-count" class="count-badge">0 titles</span>
+          </div>
+          <div class="header-right">
+            <div class="search-wrap">
+              <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input type="text" id="search-input" placeholder="Search title or author…" autocomplete="off">
+            </div>
+            <button class="btn btn-primary" id="btn-add-series">+ Add New Title</button>
+          </div>
+        </header>
+        <div class="filter-bar">
+          <button class="filter-btn active" data-status="All">All</button>
+          <button class="filter-btn" data-status="Planning">Planning</button>
+          <button class="filter-btn" data-status="Reading">Reading</button>
+          <button class="filter-btn" data-status="Finished">Finished</button>
+          <button class="filter-btn" data-status="Re-read">Re-read</button>
+          <div class="filter-sep"></div>
+          <div class="filter-dropdown-wrap" id="genre-filter-wrap">
+            <button class="filter-btn filter-dropdown-btn" id="btn-genre-filter">Genres <span
+                class="filter-count hidden" id="genre-filter-count">0</span> <span
+                class="filter-caret">▾</span></button>
+            <div class="filter-dropdown-panel hidden" id="genre-filter-panel"></div>
+          </div>
+          <div class="filter-dropdown-wrap" id="tag-filter-wrap">
+            <button class="filter-btn filter-dropdown-btn" id="btn-tag-filter">Tags <span class="filter-count hidden"
+                id="tag-filter-count">0</span> <span class="filter-caret">▾</span></button>
+            <div class="filter-dropdown-panel hidden" id="tag-filter-panel"></div>
+          </div>
+          <div class="filter-mode-wrap hidden" id="filter-mode-wrap">
+            <span class="filter-mode-label">Match</span>
+            <button class="filter-mode-btn active" data-mode="OR" id="filter-mode-any">Any</button>
+            <button class="filter-mode-btn" data-mode="AND" id="filter-mode-all">All</button>
+          </div>
+          <button class="filter-btn filter-clear hidden" id="btn-clear-filters">✕ Clear filters</button>
+        </div>
+        <div class="table-wrap">
+          <table id="series-table">
+            <thead>
+              <tr>
+                <th class="col-title">Title</th>
+                <th class="col-author">Author</th>
+                <th class="col-tags">Genres</th>
+                <th class="col-tags">Tags</th>
+                <th class="col-status">Status</th>
+                <th class="col-num">Vols</th>
+                <th class="col-num">Chars</th>
+                <th class="col-actions"></th>
+              </tr>
+            </thead>
+            <tbody id="series-tbody"></tbody>
+          </table>
+          <div id="empty-state" class="empty-state hidden">
+            <div class="empty-icon">📖</div>
+            <h3>No titles yet</h3>
+            <p>Start building your library by adding your first title</p>
+            <button class="btn btn-primary" id="btn-empty-add">+ Add New Title</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Series Detail View -->
+      <section id="view-series" class="view hidden">
+        <div class="series-scroll" id="series-scroll">
+          <div class="series-sticky-header">
+            <header class="view-header">
+              <button class="btn-back" id="btn-back">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="19" y1="12" x2="5" y2="12" />
+                  <polyline points="12 19 5 12 12 5" />
+                </svg>
+                Library
+              </button>
+              <div class="header-right">
+                <button class="btn btn-ghost btn-sm" id="btn-edit-series">Edit</button>
+                <button class="btn btn-danger-ghost btn-sm" id="btn-delete-series">Delete</button>
+              </div>
+            </header>
+            <!-- Series Hero (top: status, title, author) -->
+            <div id="series-hero-top"></div>
+            <!-- Tabs -->
+            <div class="tab-bar">
+              <button class="tab active" data-tab="volumes" id="tab-volumes">
+                <span id="tab-volumes-label">Volumes</span> <span class="tab-count" id="vol-tab-count">0</span>
+              </button>
+              <button class="tab" data-tab="characters" id="tab-characters">
+                Characters <span class="tab-count" id="char-tab-count">0</span>
+              </button>
+              <button class="tab" data-tab="gallery" id="tab-gallery">
+                Gallery <span class="tab-count" id="gallery-tab-count">0</span>
+              </button>
+              <button class="tab" data-tab="files" id="tab-files">
+                Files <span class="tab-count" id="files-tab-count">0</span>
+              </button>
+            </div>
+          </div>
+          <!-- Volumes / Thoughts Tab -->
+          <div id="pane-volumes" class="tab-pane active">
+            <div id="series-hero-details"></div>
+            <div class="pane-toolbar">
+              <button class="btn btn-primary btn-sm" id="btn-add-volume">+ Add Volume</button>
+              <button class="btn btn-ghost btn-sm hidden" id="btn-edit-standalone-thoughts">Edit Thoughts</button>
+            </div>
+            <div id="volumes-list" class="volumes-list"></div>
+            <div id="standalone-thoughts-view" class="hidden"></div>
+          </div>
+          <!-- Characters Tab -->
+          <div id="pane-characters" class="tab-pane hidden">
+            <div class="pane-toolbar">
+              <button class="btn btn-primary btn-sm" id="btn-add-character">+ Add Character</button>
+              <button class="btn btn-secondary btn-sm" id="btn-view-graph">🕸 Relationship Graph</button>
+            </div>
+            <div id="characters-grid" class="characters-grid"></div>
+          </div>
+          <!-- Gallery Tab -->
+          <div id="pane-gallery" class="tab-pane hidden">
+            <div class="pane-toolbar">
+              <button class="btn btn-primary btn-sm" id="btn-add-gallery-image">+ Add Picture</button>
+            </div>
+            <div id="gallery-grid" class="gallery-grid"></div>
+          </div>
+          <!-- Files Tab -->
+          <div id="pane-files" class="tab-pane hidden">
+            <div class="pane-toolbar">
+              <button class="btn btn-primary btn-sm" id="btn-add-file">+ Add File</button>
+            </div>
+            <div id="files-list" class="files-list"></div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ── Modals ─────────────────────────────────────────────────────────────── -->
+
+  <!-- Series Form -->
+  <div class="overlay hidden" id="overlay-series">
+    <div class="modal" id="modal-series">
+      <div class="modal-header">
+        <h2 id="modal-series-title">Add New Title</h2>
+        <button class="close-btn" data-close="overlay-series">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" id="kind-selector-group">
+          <label>Type</label>
+          <div class="type-chips" id="f-s-kind-chips">
+            <button type="button" class="type-chip active" data-kind="series">Series (has volumes)</button>
+            <button type="button" class="type-chip" data-kind="standalone">Standalone (single book)</button>
+          </div>
+          <input type="hidden" id="f-s-kind" value="series">
+          <p class="form-hint hidden" id="kind-locked-hint">Type can't be changed after a title is created.</p>
+        </div>
+        <div class="form-group hidden" id="series-cover-group">
+          <label>Cover Image <span class="optional">(optional)</span></label>
+          <div class="img-picker" id="series-cover-picker" data-target="f-s-cover">
+            <div class="img-preview" id="series-cover-preview"><span>Click to add cover</span></div>
+          </div>
+          <input type="hidden" id="f-s-cover">
+        </div>
+        <div class="form-group">
+          <label for="f-s-title">Title <span class="req">*</span></label>
+          <input id="f-s-title" type="text" placeholder="e.g. Pride and Prejudice" required>
+        </div>
+        <div class="form-group">
+          <label for="f-s-author">Author</label>
+          <input id="f-s-author" type="text" placeholder="e.g. Jane Austen">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="f-s-status">Status</label>
+            <select id="f-s-status">
+              <option value="Planning">Planning</option>
+              <option value="Reading">Reading</option>
+              <option value="Finished">Finished</option>
+              <option value="Re-read">Re-read</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Genres</label>
+          <div class="genre-swatch-grid" id="genre-swatch-grid"></div>
+        </div>
+        <div class="form-group">
+          <label>Tags</label>
+          <div class="tag-input-wrap" id="tag-input-wrap">
+            <div id="tag-chips" class="tag-chips"></div>
+            <input id="f-s-tags" type="text" placeholder="Type tag and press Enter…" autocomplete="off">
+          </div>
+          <div class="tag-dropdown hidden" id="tag-dropdown"></div>
+        </div>
+        <div class="form-group">
+          <label for="f-s-synopsis">Synopsis</label>
+          <textarea id="f-s-synopsis" rows="4" placeholder="Brief description of the work"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-series">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-series">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Standalone Thoughts -->
+  <div class="overlay hidden" id="overlay-standalone-thoughts">
+    <div class="modal modal-lg" id="modal-standalone-thoughts">
+      <div class="modal-header">
+        <h2>Edit Thoughts</h2>
+        <button class="close-btn" data-close="overlay-standalone-thoughts">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="f-standalone-thoughts">Overall Thoughts</label>
+          <textarea id="f-standalone-thoughts" rows="6" placeholder="Your overall thoughts on this book…"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="f-standalone-chapter-notes">Chapter Notes</label>
+          <textarea id="f-standalone-chapter-notes" rows="6" placeholder="Per-chapter notes…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-standalone-thoughts">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-standalone-thoughts">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Volume Form -->
+  <div class="overlay hidden" id="overlay-volume">
+    <div class="modal modal-lg" id="modal-volume">
+      <div class="modal-header">
+        <h2 id="modal-volume-title">Add Volume</h2>
+        <button class="close-btn" data-close="overlay-volume">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Cover Image <span class="optional">(optional)</span></label>
+          <div class="img-picker" id="vol-cover-picker" data-target="f-v-cover">
+            <div class="img-preview" id="vol-cover-preview"><span>Click to add cover</span></div>
+          </div>
+          <input type="hidden" id="f-v-cover">
+        </div>
+        <div class="form-row">
+          <div class="form-group form-group-sm">
+            <label for="f-v-number">Volume # <span class="req">*</span></label>
+            <input id="f-v-number" type="number" min="1" placeholder="1" required>
+          </div>
+          <div class="form-group">
+            <label for="f-v-title">Subtitle</label>
+            <input id="f-v-title" type="text" placeholder="Optional volume subtitle">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="f-v-chapters">Chapter Range</label>
+            <input id="f-v-chapters" type="text" placeholder="e.g. Ch. 1–45">
+          </div>
+          <div class="form-group form-group-sm">
+            <label for="f-v-count">Ch. Count</label>
+            <input id="f-v-count" type="number" min="0" placeholder="45">
+          </div>
+          <div class="form-group form-group-sm">
+            <label for="f-v-date">Date Read</label>
+            <input id="f-v-date" type="date">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="f-v-thoughts">Thoughts</label>
+          <textarea id="f-v-thoughts" rows="5" placeholder="Your thoughts on this volume…"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="f-v-notes">Chapter Notes</label>
+          <textarea id="f-v-notes" rows="5" placeholder="Per-chapter notes…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-volume">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-volume">Save Volume</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Volume Detail -->
+  <div class="overlay hidden" id="overlay-vol-detail">
+    <div class="modal modal-lg" id="modal-vol-detail">
+      <div class="modal-header">
+        <h2 id="vol-detail-heading">Volume Detail</h2>
+        <div class="modal-header-actions">
+          <button class="btn btn-ghost btn-sm" id="btn-edit-vol">Edit</button>
+          <button class="btn btn-danger-ghost btn-sm" id="btn-delete-vol">Delete</button>
+          <button class="close-btn" data-close="overlay-vol-detail">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" id="vol-detail-body"></div>
+    </div>
+  </div>
+
+  <!-- Character Form -->
+  <div class="overlay hidden" id="overlay-character">
+    <div class="modal" id="modal-character">
+      <div class="modal-header">
+        <h2 id="modal-char-title">Add Character</h2>
+        <button class="close-btn" data-close="overlay-character">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group form-centered">
+          <div class="img-picker img-circle" id="char-img-picker" data-target="f-c-img">
+            <div class="img-preview circular" id="char-img-preview"><span>Photo</span></div>
+          </div>
+          <input type="hidden" id="f-c-img">
+        </div>
+        <div class="form-group">
+          <label for="f-c-name">Name <span class="req">*</span></label>
+          <input id="f-c-name" type="text" placeholder="Character name" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="f-c-role">Role</label>
+            <select id="f-c-role">
+              <option value="Protagonist">Protagonist</option>
+              <option value="Antagonist">Antagonist</option>
+              <option value="Side" selected>Side Character</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="f-c-vols">Volume Appearances</label>
+            <input id="f-c-vols" type="text" placeholder="e.g. Vol. 1, 3, 5">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="f-c-notes">Notes</label>
+          <textarea id="f-c-notes" rows="4" placeholder="Personality, arc, traits…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-character">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-character">Save Character</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Character Drawer -->
+  <div class="drawer-overlay hidden" id="drawer-overlay">
+    <div class="drawer" id="char-drawer">
+      <div class="drawer-header">
+        <button class="close-btn" id="btn-close-drawer">✕</button>
+        <div class="drawer-actions">
+          <button class="btn btn-ghost btn-sm" id="btn-edit-char">Edit</button>
+          <button class="btn btn-danger-ghost btn-sm" id="btn-delete-char">Delete</button>
+        </div>
+      </div>
+      <div class="drawer-body" id="drawer-body"></div>
+      <div class="drawer-section">
+        <div class="drawer-section-header">
+          <span>Relationships</span>
+          <button class="btn btn-ghost btn-sm" id="btn-add-rel-drawer">+ Add</button>
+        </div>
+        <div id="drawer-rels"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Relationship Form -->
+  <div class="overlay hidden" id="overlay-relationship">
+    <div class="modal" id="modal-relationship">
+      <div class="modal-header">
+        <h2 id="modal-rel-title">Add Relationship</h2>
+        <button class="close-btn" data-close="overlay-relationship">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="rel-row">
+          <div class="form-group">
+            <label>From <span class="req">*</span></label>
+            <div id="f-r-from" class="char-picker"></div>
+            <input type="hidden" id="f-r-from-val">
+          </div>
+          <div class="rel-arrow">→</div>
+          <div class="form-group">
+            <label>To <span class="req">*</span></label>
+            <div id="f-r-to" class="char-picker"></div>
+            <input type="hidden" id="f-r-to-val">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Type</label>
+            <div id="f-r-type" class="type-chips">
+              <button type="button" class="type-chip active" data-type="Friend">Friend</button>
+              <button type="button" class="type-chip" data-type="Rival">Rival</button>
+              <button type="button" class="type-chip" data-type="Family">Family</button>
+              <button type="button" class="type-chip" data-type="Enemy">Enemy</button>
+              <button type="button" class="type-chip" data-type="Romance">Romance</button>
+              <button type="button" class="type-chip" data-type="Mentor">Mentor</button>
+              <button type="button" class="type-chip" data-type="Other">Other</button>
+            </div>
+            <input type="hidden" id="f-r-type-val" value="Friend">
+          </div>
+          <div class="form-group form-inline">
+            <label class="toggle-label">
+              <input type="checkbox" id="f-r-bidir" checked>
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span>Bidirectional</span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="f-r-label">Label <span class="optional">(optional)</span></label>
+          <input type="text" id="f-r-label"
+            placeholder="e.g. Crush, Sibling, Best friend — keeps the type's color above" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label for="f-r-notes">Notes</label>
+          <textarea id="f-r-notes" rows="3" placeholder="Notes about this relationship…"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-relationship">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-relationship">Save Relationship</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Relationship Graph Modal -->
+  <div class="overlay hidden" id="overlay-graph">
+    <div class="modal modal-fullscreen" id="modal-graph">
+      <div class="modal-header">
+        <h2>Character Relationships</h2>
+        <div class="graph-legend" id="graph-legend"></div>
+        <div class="modal-header-actions">
+          <button class="btn btn-primary btn-sm" id="btn-add-rel-graph">+ Add Relationship</button>
+          <button class="close-btn" data-close="overlay-graph">✕</button>
+        </div>
+      </div>
+      <div id="graph-container"></div>
+      <div class="graph-hint">Click a character to view their profile</div>
+    </div>
+  </div>
+
+  <!-- Gallery Image Detail -->
+  <div class="overlay hidden" id="overlay-gallery-detail">
+    <div class="modal modal-lg" id="modal-gallery-detail">
+      <div class="modal-header">
+        <h2>Picture</h2>
+        <div class="modal-header-actions">
+          <button class="btn btn-danger-ghost btn-sm" id="btn-delete-gallery-image">Delete</button>
+          <button class="close-btn" data-close="overlay-gallery-detail">✕</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <img id="gallery-detail-img" class="gallery-detail-img" src="" alt="">
+        <div class="form-group" style="margin-top: 20px;">
+          <label for="f-gallery-caption">Caption</label>
+          <input id="f-gallery-caption" type="text" placeholder="Add a caption…" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-gallery-detail">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-gallery-caption">Save Caption</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customize Library -->
+  <div class="overlay hidden" id="overlay-customize">
+    <div class="modal" id="modal-customize">
+      <div class="modal-header">
+        <h2 id="modal-customize-title">Add Category</h2>
+        <button class="close-btn" data-close="overlay-customize">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="f-lib-title">Category Name</label>
+          <input id="f-lib-title" type="text" placeholder="e.g. Romance Novels">
+        </div>
+        <div class="form-group">
+          <label>Icon</label>
+          <div class="icon-swatch-grid" id="icon-swatch-grid"></div>
+          <div class="icon-upload-row">
+            <div class="img-picker icon-upload-picker" id="nav-icon-picker">
+              <div class="img-preview" id="nav-icon-upload-preview"><span>Upload custom icon</span></div>
+            </div>
+            <input type="hidden" id="f-lib-icon-image">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger-ghost hidden" id="btn-delete-library">Delete Category</button>
+        <button class="btn btn-ghost" data-close="overlay-customize">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-customize">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Dialog -->
+  <div class="overlay hidden" id="overlay-confirm">
+    <div class="modal modal-sm" id="modal-confirm">
+      <div class="modal-header">
+        <h2 id="confirm-title">Confirm Delete</h2>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-msg"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="btn-confirm-no">Cancel</button>
+        <button class="btn btn-danger" id="btn-confirm-yes">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="./node_modules/vis-network/standalone/umd/vis-network.min.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>
