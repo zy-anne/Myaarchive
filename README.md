@@ -100,26 +100,6 @@ R2_BUCKET_NAME=your_bucket_name
    npm start
    ```
 
----
-
-## 📱 Mobile App Setup (iOS & Android)
-
-1. **Navigate to `mobile/`**:
-   ```bash
-   cd mobile
-   npm install
-   ```
-
-2. **Start Expo Dev Server**:
-   ```bash
-   npx expo start -c
-   ```
-
-3. **Open on Mobile**:
-   - Install **Expo Go** on your device.
-   - Scan the terminal QR code.
-
----
 
 ## 📄 License
 
