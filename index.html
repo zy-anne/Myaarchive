@@ -26,8 +26,13 @@
   <div id="auth-gate">
     <div class="auth-gate-card">
       <span class="brand-name">Myaarchive</span>
-      <p id="auth-gate-status">Sign in to access your library.</p>
-      <button class="btn btn-primary" id="btn-auth-signin">Sign In</button>
+      <form id="auth-form" style="display:flex; flex-direction:column; gap:12px; width:260px;">
+        <input id="auth-username" type="text" placeholder="Username" autocomplete="username" required>
+        <input id="auth-password" type="password" placeholder="Password" autocomplete="current-password" required>
+        <button type="submit" class="btn btn-primary" id="btn-auth-submit">Sign In</button>
+        <button type="button" class="btn btn-ghost" id="btn-auth-toggle">Need an account? Sign Up</button>
+      </form>
+      <p id="auth-gate-status">Sign in to sync your library across devices.</p>
     </div>
   </div>
 
@@ -124,11 +129,7 @@
           </div>
         </header>
         <div class="filter-bar">
-          <button class="filter-btn active" data-status="All">All</button>
-          <button class="filter-btn" data-status="Planning">Planning</button>
-          <button class="filter-btn" data-status="Reading">Reading</button>
-          <button class="filter-btn" data-status="Finished">Finished</button>
-          <button class="filter-btn" data-status="Re-read">Re-read</button>
+          <div id="status-filter-buttons" style="display:contents"></div>
           <div class="filter-sep"></div>
           <div class="filter-dropdown-wrap" id="genre-filter-wrap">
             <button class="filter-btn filter-dropdown-btn" id="btn-genre-filter">Genres <span
@@ -283,12 +284,10 @@
         <div class="form-row">
           <div class="form-group">
             <label for="f-s-status">Status</label>
-            <select id="f-s-status">
-              <option value="Planning">Planning</option>
-              <option value="Reading">Reading</option>
-              <option value="Finished">Finished</option>
-              <option value="Re-read">Re-read</option>
-            </select>
+            <div class="status-select-row">
+              <select id="f-s-status"></select>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-manage-statuses">Manage</button>
+            </div>
           </div>
         </div>
         <div class="form-group">
@@ -307,6 +306,115 @@
           <label for="f-s-synopsis">Synopsis</label>
           <textarea id="f-s-synopsis" rows="4" placeholder="Brief description of the work"></textarea>
         </div>
+
+        <details class="details-section" id="series-extra-details">
+          <summary>Additional Details <span class="optional">(all optional)</span></summary>
+          <div class="details-section-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Rating</label>
+                <div class="rating-stars" id="f-s-rating-stars"></div>
+                <input type="hidden" id="f-s-rating" value="0">
+              </div>
+              <div class="form-group">
+                <label for="f-s-booktype">Book Type</label>
+                <input id="f-s-booktype" type="text" list="book-type-options" placeholder="e.g. Web Novel, Manga"
+                  autocomplete="off">
+                <datalist id="book-type-options">
+                  <option value="Novel">
+                  <option value="Light Novel">
+                  <option value="Web Novel">
+                  <option value="Graphic Novel">
+                  <option value="Manga">
+                  <option value="Manhwa">
+                  <option value="Manhua">
+                  <option value="Comic">
+                </datalist>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-date-started">Date Started</label>
+                <input id="f-s-date-started" type="date">
+              </div>
+              <div class="form-group">
+                <label for="f-s-date-finished">Date Finished</label>
+                <input id="f-s-date-finished" type="date">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-artist">Artist(s)</label>
+                <input id="f-s-artist" type="text" placeholder="e.g. Takeshi Obata">
+              </div>
+              <div class="form-group">
+                <label for="f-s-year-pub">Year Published</label>
+                <input id="f-s-year-pub" type="text" placeholder="e.g. 2019" inputmode="numeric">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-orig-lang">Original Language</label>
+                <input id="f-s-orig-lang" type="text" placeholder="e.g. Japanese">
+              </div>
+              <div class="form-group">
+                <label for="f-s-origin-country">Country of Origin</label>
+                <input id="f-s-origin-country" type="text" placeholder="e.g. Japan">
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-lang-read">Language Read</label>
+                <input id="f-s-lang-read" type="text" placeholder="English" value="English">
+              </div>
+              <div class="form-group">
+                <label for="f-s-status-origin">Status in Country of Origin</label>
+                <input id="f-s-status-origin" type="text" list="origin-status-options" placeholder="e.g. Ongoing"
+                  autocomplete="off">
+                <datalist id="origin-status-options">
+                  <option value="Ongoing">
+                  <option value="Completed">
+                  <option value="Hiatus">
+                  <option value="Cancelled">
+                </datalist>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-licensed">Licensed to English?</label>
+                <select id="f-s-licensed">
+                  <option value="">Unknown</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="f-s-translated">Completely Translated?</label>
+                <select id="f-s-translated">
+                  <option value="">Unknown</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-orig-publisher">Original Publisher</label>
+                <input id="f-s-orig-publisher" type="text" placeholder="e.g. Shueisha">
+              </div>
+              <div class="form-group">
+                <label for="f-s-eng-publisher">English Publisher</label>
+                <input id="f-s-eng-publisher" type="text" placeholder="e.g. Viz Media">
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" data-close="overlay-series">Cancel</button>
@@ -377,6 +485,10 @@
             <label for="f-v-date">Date Read</label>
             <input id="f-v-date" type="date">
           </div>
+        </div>
+        <div class="form-group">
+          <label for="f-v-published">Publication Date <span class="optional">(optional)</span></label>
+          <input id="f-v-published" type="date">
         </div>
         <div class="form-group">
           <label for="f-v-thoughts">Thoughts</label>
@@ -602,6 +714,29 @@
         <button class="btn btn-danger-ghost hidden" id="btn-delete-library">Delete Category</button>
         <button class="btn btn-ghost" data-close="overlay-customize">Cancel</button>
         <button class="btn btn-primary" id="btn-save-customize">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manage Statuses -->
+  <div class="overlay hidden" id="overlay-manage-statuses">
+    <div class="modal" id="modal-manage-statuses">
+      <div class="modal-header">
+        <h2>Manage Statuses</h2>
+        <button class="close-btn" data-close="overlay-manage-statuses">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="form-hint" style="margin-bottom: 16px;">Changes save automatically. A status still in use by a title
+          can't be deleted — reassign those titles first.</p>
+        <div id="status-manage-list" class="status-manage-list"></div>
+        <div class="status-manage-add">
+          <input type="color" id="new-status-color" value="#7C93AC" title="Color">
+          <input type="text" id="new-status-name" placeholder="New status name…" autocomplete="off">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-add-status">+ Add</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-manage-statuses">Done</button>
       </div>
     </div>
   </div>
