@@ -823,22 +823,6 @@ th.col-num {
   border: 1px solid currentColor;
 }
 
-.status-badge.planning {
-  color: var(--accent);
-}
-
-.status-badge.reading {
-  color: var(--primary);
-}
-
-.status-badge.finished {
-  color: #2E5C3B;
-}
-
-.status-badge.re-read {
-  color: #8C6A9E;
-}
-
 .kind-badge {
   display: inline-block;
   padding: 2px 8px;
@@ -1215,14 +1199,6 @@ th.col-num {
   color: var(--role-antagonist);
 }
 
-[data-theme="dark"] .status-badge.finished {
-  color: #6FCF97;
-}
-
-[data-theme="dark"] .status-badge.re-read {
-  color: #C9A8DE;
-}
-
 /* ── Gallery Tab ──────────────────────────────────────────────────────────── */
 .gallery-grid {
   display: grid;
@@ -1522,6 +1498,7 @@ label {
 }
 
 input[type="text"],
+input[type="password"],
 input[type="number"],
 input[type="date"],
 select,
@@ -1559,6 +1536,7 @@ textarea::placeholder {
    against a light surface; a dark-hued one (e.g. navy, forest green) can
    sink into the dark surface color, so nudge them lighter in dark mode. */
 [data-theme="dark"] .tag-pill,
+[data-theme="dark"] .status-badge,
 [data-theme="dark"] .genre-swatch-dot,
 [data-theme="dark"] .filter-option-swatch {
   filter: brightness(1.4) saturate(1.05);
@@ -2132,6 +2110,179 @@ textarea::placeholder {
   color: var(--text-muted);
   margin-top: 36px;
   font-family: var(--font-mono);
+}
+
+/* ── Status Management ────────────────────────────────────────────────── */
+.status-select-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.status-select-row select {
+  flex: 1;
+}
+
+.status-manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.status-manage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.status-manage-row .status-name-input {
+  flex: 1;
+}
+
+.status-manage-add {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border);
+}
+
+.status-manage-add input[type="text"] {
+  flex: 1;
+}
+
+input[type="color"] {
+  width: 38px;
+  height: 38px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Collapsible "Additional Details" section (series form) ─────────────── */
+.details-section {
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.details-section summary {
+  cursor: pointer;
+  padding: 12px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-family: var(--font-ui);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.details-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.details-section summary::before {
+  content: '▸';
+  font-size: 10px;
+  transition: transform 0.15s;
+}
+
+.details-section[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.details-section summary:hover {
+  color: var(--text-main);
+}
+
+.details-section-body {
+  padding: 4px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.details-section-body .form-row {
+  gap: 16px;
+}
+
+.details-section-body .form-group {
+  margin-bottom: 0;
+}
+
+/* ── Rating (1–5 stars) ───────────────────────────────────────────────────── */
+.rating-stars {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.rating-stars .star-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: var(--border);
+  transition: color 0.15s, transform 0.1s;
+  line-height: 1;
+}
+
+.rating-stars .star-btn:hover,
+.rating-stars .star-btn.hover-preview {
+  transform: scale(1.1);
+}
+
+.rating-stars .star-btn.filled {
+  color: var(--primary);
+}
+
+.rating-stars.readonly .star-btn {
+  cursor: default;
+}
+
+.rating-stars.readonly .star-btn:hover {
+  transform: none;
+}
+
+/* ── Hero extra-details grid (series detail page) ────────────────────────── */
+.hero-extra-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px 24px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border);
+  max-width: 900px;
+}
+
+.hero-extra-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hero-extra-item .hero-field-label {
+  margin-bottom: 0;
+}
+
+.hero-extra-value {
+  font-size: 13px;
+  color: var(--text-main);
+  font-family: var(--font-ui);
 }
 
 /* ── Toasts ──────────────────────────────────────────────────────────────── */
