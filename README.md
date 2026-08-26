@@ -4,7 +4,6 @@
 [![Expo SDK](https://img.shields.io/badge/Expo-SDK_54-000000.svg?logo=expo)](https://expo.dev)
 [![Turso Database](https://img.shields.io/badge/Database-Turso_libSQL-00E599.svg)](https://turso.tech)
 [![Cloudflare R2](https://img.shields.io/badge/Storage-Cloudflare_R2-F38020.svg?logo=cloudflare)](https://www.cloudflare.com)
-[![Clerk Auth](https://img.shields.io/badge/Auth-Clerk-6C47FF.svg?logo=clerk)](https://clerk.com)
 
 **Myaarchive** is a personal reading library and manga/book tracker built for readers, collectors, and archivers. It offers an interactive way to manage reading progress, character relationship maps, cloud galleries, and volume notes across web browsers, desktop, and mobile devices.
 
@@ -37,9 +36,6 @@ You can access the live hosted web application directly in your browser:
 - **R2 Asset Storage**: Upload high-res book covers, gallery artwork, and document attachments via **Cloudflare R2**.
 - **Multi-User Isolation**: User accounts and libraries are isolated with **Clerk Authentication**.
 
-### 📱 Cross-Platform Companion
-- **Web & Desktop App**: Modern dark theme with dynamic color palettes and fluid UI.
-- **Expo Mobile App**: Built for iOS and Android with native Expo Router navigation.
 
 ---
 
@@ -50,7 +46,6 @@ You can access the live hosted web application directly in your browser:
 | **Web Frontend** | HTML5, Vanilla CSS3, JavaScript, `vis-network` |
 | **Database** | Turso (libSQL / Cloud SQLite) |
 | **Cloud Storage** | Cloudflare R2 (S3-Compatible API) |
-| **Authentication** | Clerk (JWT & OAuth) |
 | **Desktop Runtime** | Electron |
 | **Mobile Runtime** | Expo SDK 54 (React Native & Expo Router) |
 
