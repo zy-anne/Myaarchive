@@ -12,11 +12,10 @@ contextBridge.exposeInMainWorld('initialTheme', themeArg ? themeArg.split('=')[1
 
 contextBridge.exposeInMainWorld('api', {
   auth: {
-    signIn: () => invoke('auth:signIn'),
+    signUp: (username, password) => invoke('auth:signUp', username, password),
+    signIn: (username, password) => invoke('auth:signIn', username, password),
     signOut: () => invoke('auth:signOut'),
     currentUser: () => invoke('auth:currentUser'),
-    onSignedIn: (cb) => ipcRenderer.on('auth:signedIn', (_, user) => cb(user)),
-    onFailed: (cb) => ipcRenderer.on('auth:failed', () => cb()),
   },
   series: {
     getAll: (f) => invoke('series:getAll', f),
@@ -52,6 +51,12 @@ contextBridge.exposeInMainWorld('api', {
   },
   genres: {
     getAll: () => invoke('genres:getAll'),
+  },
+  statuses: {
+    getAll: () => invoke('statuses:getAll'),
+    create: (d) => invoke('statuses:create', d),
+    update: (id, d) => invoke('statuses:update', id, d),
+    delete: (id) => invoke('statuses:delete', id),
   },
   settings: {
     getAll: () => invoke('settings:getAll'),
