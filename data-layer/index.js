@@ -198,6 +198,45 @@ async function seriesGet(db, ownerId, id) {
     return parseSeriesRow(row);
 }
 
+// Fields added for the "book detail" expansion (all optional, all nullable).
+// Kept as a single ordered array so the INSERT/UPDATE column lists and the
+// migration below can't drift out of sync with each other.
+const SERIES_EXTRA_FIELDS = [
+    ['book_type', 'TEXT'],                    // e.g. Web Novel, Manga, Graphic Novel
+    ['rating', 'INTEGER'],                    // 1-5, or NULL if unrated
+    ['original_language', 'TEXT'],
+    ['country_of_origin', 'TEXT'],
+    ['language_read', "TEXT DEFAULT 'English'"],
+    ['artist', 'TEXT'],
+    ['year_published', 'TEXT'],               // series/standalone-level publication year
+    ['date_started', 'TEXT'],                 // reading start date
+    ['date_finished', 'TEXT'],                // reading finish date
+    ['status_country_of_origin', 'TEXT'],     // e.g. Ongoing / Completed / Hiatus in its home market
+    ['licensed_english', 'TEXT'],             // 'Yes' / 'No' / '' (unknown)
+    ['completely_translated', 'TEXT'],        // 'Yes' / 'No' / '' (unknown)
+    ['original_publisher', 'TEXT'],
+    ['english_publisher', 'TEXT'],
+];
+
+function seriesExtraArgs(data) {
+    return [
+        data.book_type || null,
+        data.rating || null,
+        data.original_language || null,
+        data.country_of_origin || null,
+        data.language_read || 'English',
+        data.artist || null,
+        data.year_published || null,
+        data.date_started || null,
+        data.date_finished || null,
+        data.status_country_of_origin || null,
+        data.licensed_english || null,
+        data.completely_translated || null,
+        data.original_publisher || null,
+        data.english_publisher || null,
+    ];
+}
+
 async function seriesCreate(db, ownerId, data) {
     // Verify the target library belongs to this user before inserting.
     const lib = await one(db, `SELECT id FROM libraries WHERE id = ? AND owner_id = ?`, [data.library_id, ownerId]);
@@ -206,9 +245,17 @@ async function seriesCreate(db, ownerId, data) {
     const tx = await db.transaction('write');
     try {
         const r = await tx.execute({
-            sql: `INSERT INTO series (title, author, status, synopsis, library_id, kind, overall_thoughts, chapter_thoughts, cover_image_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            args: [data.title, data.author || null, data.status || 'Planning', data.synopsis || null, data.library_id,
-            data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null],
+            sql: `INSERT INTO series (
+                title, author, status, synopsis, library_id, kind, overall_thoughts, chapter_thoughts, cover_image_path,
+                book_type, rating, original_language, country_of_origin, language_read, artist, year_published,
+                date_started, date_finished, status_country_of_origin, licensed_english, completely_translated,
+                original_publisher, english_publisher
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            args: [
+                data.title, data.author || null, data.status || 'Planning', data.synopsis || null, data.library_id,
+                data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
+                ...seriesExtraArgs(data),
+            ],
         });
         const seriesId = Number(r.lastInsertRowid);
         await tx.commit();
@@ -228,9 +275,15 @@ async function seriesUpdate(db, ownerId, id, data) {
     if (!existing) throw new Error('Series not found for this user');
 
     await run(db, `
-    UPDATE series SET title=?, author=?, status=?, synopsis=?, kind=?, overall_thoughts=?, chapter_thoughts=?, cover_image_path=? WHERE id=?
+    UPDATE series SET title=?, author=?, status=?, synopsis=?, kind=?, overall_thoughts=?, chapter_thoughts=?, cover_image_path=?,
+      book_type=?, rating=?, original_language=?, country_of_origin=?, language_read=?, artist=?, year_published=?,
+      date_started=?, date_finished=?, status_country_of_origin=?, licensed_english=?, completely_translated=?,
+      original_publisher=?, english_publisher=?
+    WHERE id=?
   `, [data.title, data.author || null, data.status || 'Planning', data.synopsis || null,
-    data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null, id]);
+    data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
+    ...seriesExtraArgs(data),
+        id]);
     if (data.tags !== undefined) await upsertSeriesTags(db, id, data.tags);
     if (data.genres !== undefined) await upsertSeriesGenres(db, id, data.genres);
     return true;
@@ -255,17 +308,17 @@ async function volumesGetBySeries(db, seriesId) {
 async function volumesGet(db, id) { return one(db, `SELECT * FROM volumes WHERE id = ?`, [id]); }
 async function volumesCreate(db, d) {
     const r = await run(db, `
-    INSERT INTO volumes (series_id, volume_number, title, chapter_range, chapter_count, thoughts, chapter_notes, cover_image_path, date_read)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO volumes (series_id, volume_number, title, chapter_range, chapter_count, thoughts, chapter_notes, cover_image_path, date_read, published_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [d.series_id, d.volume_number, d.title || null, d.chapter_range || null, d.chapter_count || null,
-    d.thoughts || null, d.chapter_notes || null, d.cover_image_path || null, d.date_read || null]);
+    d.thoughts || null, d.chapter_notes || null, d.cover_image_path || null, d.date_read || null, d.published_date || null]);
     return Number(r.lastInsertRowid);
 }
 async function volumesUpdate(db, id, d) {
     await run(db, `
-    UPDATE volumes SET volume_number=?, title=?, chapter_range=?, chapter_count=?, thoughts=?, chapter_notes=?, cover_image_path=?, date_read=? WHERE id=?
+    UPDATE volumes SET volume_number=?, title=?, chapter_range=?, chapter_count=?, thoughts=?, chapter_notes=?, cover_image_path=?, date_read=?, published_date=? WHERE id=?
   `, [d.volume_number, d.title || null, d.chapter_range || null, d.chapter_count || null,
-    d.thoughts || null, d.chapter_notes || null, d.cover_image_path || null, d.date_read || null, id]);
+    d.thoughts || null, d.chapter_notes || null, d.cover_image_path || null, d.date_read || null, d.published_date || null, id]);
     return true;
 }
 async function volumesDelete(db, id) { await run(db, `DELETE FROM volumes WHERE id = ?`, [id]); return true; }
@@ -381,10 +434,137 @@ async function attachmentsDelete(db, id) {
     return row;
 }
 
+// ─── Statuses (customizable reading statuses) ──────────────────────────
+// Stored as a name+color table, same shape as genres/tags, but series.status
+// keeps storing the plain name (not a foreign key) — that's what already
+// existed, and changing it would mean a real migration. Renaming a status
+// here cascades to any series using the old name so nothing goes orphaned.
+
+async function ensureStatusesTable(db) {
+    await db.execute(`
+    CREATE TABLE IF NOT EXISTS statuses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL COLLATE NOCASE,
+      color TEXT NOT NULL DEFAULT '#7C93AC',
+      position INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+    const { rows } = await db.execute('SELECT COUNT(*) as c FROM statuses');
+    if ((rows[0]?.c ?? 0) > 0) return; // already seeded — nothing further to do
+
+    const defaults = [
+        { name: 'Planning', color: '#45586B' },
+        { name: 'Reading', color: '#A6803C' },
+        { name: 'Finished', color: '#2E5C3B' },
+    ];
+    for (let i = 0; i < defaults.length; i++) {
+        await db.execute({
+            sql: 'INSERT INTO statuses (name, color, position) VALUES (?, ?, ?)',
+            args: [defaults[i].name, defaults[i].color, i],
+        });
+    }
+
+    // Backfill: pick up any status text already sitting on existing series
+    // (e.g. a pre-upgrade "Re-read") that isn't one of the three defaults
+    // above, so old data keeps a usable status instead of silently losing
+    // its color. Wrapped in try/catch since a brand-new install may not
+    // have a `series` table yet at all.
+    try {
+        const used = await db.execute('SELECT DISTINCT status FROM series WHERE status IS NOT NULL');
+        let pos = defaults.length;
+        for (const row of used.rows) {
+            const name = (row.status || '').trim();
+            if (!name || defaults.some(d => d.name.toLowerCase() === name.toLowerCase())) continue;
+            await db.execute({
+                sql: 'INSERT OR IGNORE INTO statuses (name, color, position) VALUES (?, ?, ?)',
+                args: [name, '#7C93AC', pos++],
+            });
+        }
+    } catch { /* no series table yet — nothing to migrate */ }
+}
+
+async function statusesGetAll(db) {
+    return q(db, `SELECT * FROM statuses ORDER BY position, id`);
+}
+
+async function statusesCreate(db, d) {
+    const name = (d.name || '').trim();
+    if (!name) throw new Error('Status name is required');
+    const dupe = await one(db, `SELECT id FROM statuses WHERE name = ? COLLATE NOCASE`, [name]);
+    if (dupe) throw new Error('That status already exists');
+    const maxPos = await one(db, `SELECT MAX(position) as maxPos FROM statuses`);
+    const pos = (maxPos?.maxPos ?? -1) + 1;
+    const r = await run(db, `INSERT INTO statuses (name, color, position) VALUES (?, ?, ?)`,
+        [name, d.color || '#7C93AC', pos]);
+    return Number(r.lastInsertRowid);
+}
+
+async function statusesUpdate(db, id, d) {
+    const name = (d.name || '').trim();
+    if (!name) throw new Error('Status name is required');
+    const dupe = await one(db, `SELECT id FROM statuses WHERE name = ? COLLATE NOCASE AND id != ?`, [name, id]);
+    if (dupe) throw new Error('That status already exists');
+    const existing = await one(db, `SELECT name FROM statuses WHERE id = ?`, [id]);
+    await run(db, `UPDATE statuses SET name=?, color=? WHERE id=?`, [name, d.color || '#7C93AC', id]);
+    // series.status isn't a foreign key, so a rename needs to be pushed
+    // out to every series currently pointing at the old name.
+    if (existing && existing.name !== name) {
+        await run(db, `UPDATE series SET status=? WHERE status=?`, [name, existing.name]);
+    }
+    return true;
+}
+
+async function statusesDelete(db, id) {
+    const total = await one(db, `SELECT COUNT(*) as c FROM statuses`);
+    if ((total?.c ?? 0) <= 1) throw new Error('You need at least one status');
+    const existing = await one(db, `SELECT name FROM statuses WHERE id = ?`, [id]);
+    if (!existing) return true;
+    const inUse = await one(db, `SELECT COUNT(*) as c FROM series WHERE status = ?`, [existing.name]);
+    if ((inUse?.c ?? 0) > 0) {
+        throw new Error(`"${existing.name}" is used by ${inUse.c} title${inUse.c === 1 ? '' : 's'} — reassign them first`);
+    }
+    await run(db, `DELETE FROM statuses WHERE id = ?`, [id]);
+    return true;
+}
+
+// ─── Migrations: extra book-detail columns ──────────────────────────────
+// SQLite/libSQL has no "ADD COLUMN IF NOT EXISTS", so we check PRAGMA
+// table_info first and only add what's missing. Safe to call on every
+// startup — a no-op once the columns already exist. Wrapped in try/catch
+// per-table since a brand-new install may not have the table yet (it gets
+// created by whatever the initial schema-setup step is, outside this file).
+
+async function ensureSeriesExtraColumns(db) {
+    try {
+        const info = await db.execute(`PRAGMA table_info(series)`);
+        const existing = new Set(info.rows.map(r => r.name));
+        for (const [name, type] of SERIES_EXTRA_FIELDS) {
+            if (!existing.has(name)) {
+                await db.execute(`ALTER TABLE series ADD COLUMN ${name} ${type}`);
+            }
+        }
+    } catch { /* no series table yet — nothing to migrate */ }
+}
+
+async function ensureVolumesExtraColumns(db) {
+    try {
+        const info = await db.execute(`PRAGMA table_info(volumes)`);
+        const existing = new Set(info.rows.map(r => r.name));
+        if (!existing.has('published_date')) {
+            await db.execute(`ALTER TABLE volumes ADD COLUMN published_date TEXT`);
+        }
+    } catch { /* no volumes table yet — nothing to migrate */ }
+}
+
 module.exports = {
+    ensureStatusesTable,
+    ensureSeriesExtraColumns,
+    ensureVolumesExtraColumns,
     libraries: { getAll: librariesGetAll, create: librariesCreate, update: librariesUpdate, delete: librariesDelete },
     tags: { getAll: tagsGetAll, create: tagsCreate },
     genres: { getAll: genresGetAll },
+    statuses: { getAll: statusesGetAll, create: statusesCreate, update: statusesUpdate, delete: statusesDelete },
     settings: { getAll: settingsGetAll, set: settingsSet },
     series: { getAll: seriesGetAll, get: seriesGet, create: seriesCreate, update: seriesUpdate, delete: seriesDelete },
     volumes: { getBySeries: volumesGetBySeries, get: volumesGet, create: volumesCreate, update: volumesUpdate, delete: volumesDelete },
