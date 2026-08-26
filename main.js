@@ -1,19 +1,26 @@
-require('dotenv').config();
-
 const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// Load env vars from the packaged resources dir when running as a built
+// exe (friends running the installer never set up their own .env), or
+// from the repo root in dev.
+require('dotenv').config({
+  path: app.isPackaged
+    ? path.join(process.resourcesPath, '.env')
+    : path.join(__dirname, '.env'),
+});
+
 const { createDesktopClient } = require('./data-layer/client');
 const dataLayer = require('./data-layer');
-const { PROTOCOL, buildSignInUrl, parseCallbackUrl, verifySessionToken, restoreFromSessionId } = require('./auth/Clerkauth.js');
+const { ensureUsersTable, signUp, signIn, userExists } = require('./auth/localAuth.js');
 const { createR2Client, makeKey, uploadBuffer, deleteObject, downloadBuffer } = require('./storage/r2');
 const { getOrDownload, evictIfOverLimit } = require('./storage/cache');
 
 let mainWindow;
 let db;                 // libSQL client (Turso embedded replica)
 let s3;                 // R2 client
-let currentUser = null; // { id } — Clerk user id, set after successful sign-in
+let currentUser = null; // { id, username } — set after successful local sign-in/sign-up
 
 const getImagesPath = () => path.join(app.getPath('userData'), 'images'); // legacy local images — see note in files:getImageData
 const getAttachmentsPath = () => path.join(app.getPath('userData'), 'attachments'); // legacy local attachments
@@ -38,66 +45,31 @@ async function ensureDefaultLibrary(ownerId) {
 }
 
 // ─── Session persistence (encrypted at rest via OS keychain) ─────────────
-// We persist the SESSION ID, not a token — Clerk session tokens expire in
-// ~60 seconds by design. On each launch, restoreFromSessionId() asks Clerk
-// whether that session is still active and gets a fresh user id from it,
-// rather than trying to reuse a long-dead token.
+// We persist the user object itself, not a token — there's no external
+// provider to check back in with, so a saved session is just "did this
+// user id still exist in the DB last we checked" (re-verified at launch
+// via userExists()).
 
-function saveSessionId(sessionId) {
+function saveSession(user) {
   if (!safeStorage.isEncryptionAvailable()) return; // falls back to re-login every launch
-  fs.writeFileSync(getSessionPath(), safeStorage.encryptString(sessionId));
+  fs.writeFileSync(getSessionPath(), safeStorage.encryptString(JSON.stringify(user)));
 }
-function loadSessionId() {
+function loadSession() {
   if (!fs.existsSync(getSessionPath()) || !safeStorage.isEncryptionAvailable()) return null;
-  try { return safeStorage.decryptString(fs.readFileSync(getSessionPath())); } catch { return null; }
+  try { return JSON.parse(safeStorage.decryptString(fs.readFileSync(getSessionPath()))); } catch { return null; }
 }
-function clearSessionId() {
+function clearSession() {
   if (fs.existsSync(getSessionPath())) fs.unlinkSync(getSessionPath());
 }
 
-// ─── Protocol registration ────────────────────────────────────────────────
-// In dev (unpackaged, `electron .`), Windows/Linux need the exe path + script
-// args passed explicitly or the OS won't know what to launch for the custom
-// scheme. Packaged builds (process.defaultApp is false) don't need this.
-if (process.defaultApp) {
-  if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
-  }
-} else {
-  app.setAsDefaultProtocolClient(PROTOCOL);
-}
-
-// ─── Auth flow ────────────────────────────────────────────────────────────
-
-async function handleAuthCallbackUrl(callbackUrl) {
-  const { token } = parseCallbackUrl(callbackUrl);
-  const result = await verifySessionToken(token);
-  if (!result) {
-    mainWindow?.webContents.send('auth:failed');
-    return;
-  }
-  currentUser = { id: result.userId };
-  saveSessionId(result.sessionId);
-  await ensureDefaultLibrary(currentUser.id);
-  mainWindow?.webContents.send('auth:signedIn', currentUser);
-}
-
-// macOS: fires when the OS hands the app a myaarchive:// URL.
-app.on('open-url', (event, url) => {
-  event.preventDefault();
-  handleAuthCallbackUrl(url);
-});
-
-// Windows/Linux: a myaarchive:// link launches a NEW process if the app
-// isn't already running (argv has the URL — checked at startup below), or
-// triggers 'second-instance' on the ALREADY-running process (this handler).
+// Single-instance lock just focuses the existing window on relaunch — no
+// custom protocol handler needed now that sign-in is a form, not a
+// browser round-trip.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', (event, argv) => {
-    const url = argv.find(a => a.startsWith(`${PROTOCOL}://`));
-    if (url) handleAuthCallbackUrl(url);
+  app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
@@ -105,11 +77,32 @@ if (!gotLock) {
   });
 }
 
-ipcMain.handle('auth:signIn', () => {
-  shell.openExternal(buildSignInUrl(process.env.CLERK_HOSTED_SIGNIN_URL));
+// ─── Auth flow ────────────────────────────────────────────────────────────
+
+ipcMain.handle('auth:signUp', async (_, username, password) => {
+  try {
+    const user = await signUp(db, username, password);
+    currentUser = user;
+    saveSession(user);
+    await ensureDefaultLibrary(user.id);
+    return { ok: true, user };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+ipcMain.handle('auth:signIn', async (_, username, password) => {
+  try {
+    const user = await signIn(db, username, password);
+    currentUser = user;
+    saveSession(user);
+    await ensureDefaultLibrary(user.id);
+    return { ok: true, user };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
 ipcMain.handle('auth:signOut', () => {
-  clearSessionId();
+  clearSession();
   currentUser = null;
 });
 ipcMain.handle('auth:currentUser', () => currentUser);
@@ -153,6 +146,14 @@ app.whenReady().then(async () => {
     syncUrl: process.env.TURSO_DATABASE_URL,
     authToken: process.env.TURSO_AUTH_TOKEN,
   });
+  await ensureUsersTable(db);
+  await dataLayer.ensureStatusesTable(db);
+  // Book-detail expansion: date started/finished, book type, rating,
+  // original language/origin, artist, publishers, licensing status, etc.
+  // (series) and per-volume publication date (volumes). Both are additive
+  // ALTER TABLE migrations — safe to run on every launch.
+  await dataLayer.ensureSeriesExtraColumns(db);
+  await dataLayer.ensureVolumesExtraColumns(db);
 
   s3 = createR2Client({
     accountId: process.env.R2_ACCOUNT_ID,
@@ -161,19 +162,14 @@ app.whenReady().then(async () => {
   });
   evictIfOverLimit(getCacheDir());
 
-  // Cold start on Windows/Linux: if this process was launched BY a
-  // myaarchive:// link (app wasn't already running), the URL is in our own
-  // argv rather than arriving via 'second-instance'.
-  const coldStartUrl = process.argv.find(a => a.startsWith(`${PROTOCOL}://`));
-
   // Restore a previous session so sign-in isn't required every launch.
-  // This asks Clerk whether the saved session id is still active — it does
-  // NOT try to reuse any old token (those are long expired by now).
-  const savedSessionId = loadSessionId();
-  if (savedSessionId) {
-    const restored = await restoreFromSessionId(savedSessionId);
-    if (restored) currentUser = { id: restored.userId };
-    else clearSessionId(); // session expired/revoked — will re-prompt via auth:signIn
+  // Just re-checks that the saved user id still exists in the DB — no
+  // external provider to reach out to.
+  const savedSession = loadSession();
+  if (savedSession && await userExists(db, savedSession.id)) {
+    currentUser = savedSession;
+  } else if (savedSession) {
+    clearSession(); // user was deleted/DB reset — will re-prompt via auth gate
   }
 
   const initialTheme = currentUser
@@ -181,10 +177,6 @@ app.whenReady().then(async () => {
     : 'dark';
   nativeTheme.themeSource = initialTheme;
   createWindow(initialTheme);
-
-  if (coldStartUrl) {
-    mainWindow.once('ready-to-show', () => handleAuthCallbackUrl(coldStartUrl));
-  }
 
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(initialTheme); });
 });
@@ -211,6 +203,12 @@ ipcMain.handle('libraries:delete', (_, id) => dataLayer.libraries.delete(db, id)
 ipcMain.handle('tags:getAll', () => dataLayer.tags.getAll(db));
 ipcMain.handle('tags:create', (_, name) => dataLayer.tags.create(db, name));
 ipcMain.handle('genres:getAll', () => dataLayer.genres.getAll(db));
+
+// ─── IPC: Statuses (customizable) ──────────────────────────────────────────
+ipcMain.handle('statuses:getAll', () => dataLayer.statuses.getAll(db));
+ipcMain.handle('statuses:create', (_, d) => dataLayer.statuses.create(db, d));
+ipcMain.handle('statuses:update', (_, id, d) => dataLayer.statuses.update(db, id, d));
+ipcMain.handle('statuses:delete', (_, id) => dataLayer.statuses.delete(db, id));
 
 // ─── IPC: Settings ────────────────────────────────────────────────────────
 ipcMain.handle('settings:getAll', () => dataLayer.settings.getAll(db, requireUser()));
