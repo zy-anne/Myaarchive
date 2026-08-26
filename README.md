@@ -24,8 +24,9 @@ You can access the live hosted web application directly in your browser:
 
 ### 📖 Title & Volume Tracking
 - **Multi-Volume Series & Standalone Books**: Track manga, light novels, comic series, and single standalone novels.
-- **Reading Status & Progress**: Sort titles into *Planning*, *Reading*, *Finished*, and *Re-read*.
+- **Reading Status & Progress**: Sort titles into *Planning*, *Reading*, *Finished*, and other custom statuses you define.
 - **Volume Notes & Thoughts**: Capture chapter notes, volume reviews, and reading dates.
+- **Additional Details** *(all optional)*: Date started/finished reading, book type (Web Novel, Manga, Graphic Novel, etc.), 1–5 star rating, original language & country of origin, language read, author(s) & artist(s), year published (with per-volume publication dates for series), status in country of origin, English licensing & translation status, and original/English publisher.
 
 ### 🕸️ Interactive Character Relationship Map
 - **Character Profiles**: Track main/side character roles, appearances, and bio notes.
@@ -66,26 +67,6 @@ git clone https://github.com/your-username/myaarchive.git
 cd myaarchive
 ```
 
-### 2. Environment Variables (.env)
-
-For self-hosting, copy the placeholder key structure into a local `.env` file:
-
-```env
-# Database (Turso)
-TURSO_DATABASE_URL=libsql://your-database.turso.io
-TURSO_AUTH_TOKEN=your-turso-token
-
-# Authentication (Clerk)
-CLERK_SECRET_KEY=sk_test_your_secret_key
-CLERK_PUBLISHABLE_KEY=pk_test_your_publishable_key
-
-# Object Storage (Cloudflare R2)
-R2_ACCOUNT_ID=your_account_id
-R2_ACCESS_KEY_ID=your_access_key_id
-R2_SECRET_ACCESS_KEY=your_secret_access_key
-R2_BUCKET_NAME=your_bucket_name
-```
-
 ---
 
 ## 💻 Web & Desktop App Setup
@@ -99,6 +80,8 @@ R2_BUCKET_NAME=your_bucket_name
    ```bash
    npm start
    ```
+
+---
 
 
 ## 📄 License
