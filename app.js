@@ -12,6 +12,8 @@ let state = {
   selectedTags: [],
   allGenres: [],
   selectedGenres: [],
+  selectedRating: 0,
+  allStatuses: [],
   filterStatus: 'All',
   filterTags: [],
   filterGenres: [],
@@ -115,6 +117,34 @@ const formatDate = (ds) => {
   const d = new Date(ds);
   return isNaN(d) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 };
+
+// ─── Rating (1-5 stars) ─────────────────────────────────────────────────────
+// Renders into `container`. In interactive mode, clicking a star sets
+// state.selectedRating and calls onChange; clicking the currently-selected
+// star clears the rating back to 0 (so "3 stars" is easy to undo without a
+// separate clear button). Pass readonly:true for display-only contexts.
+function renderRatingStars(container, rating = 0, { readonly = false, onChange = null } = {}) {
+  container.classList.toggle('readonly', readonly);
+  container.innerHTML = [1, 2, 3, 4, 5].map(n => `
+    <${readonly ? 'span' : 'button type="button"'} class="star-btn ${n <= rating ? 'filled' : ''}" data-star="${n}" ${readonly ? '' : 'title="' + n + ' star' + (n > 1 ? 's' : '') + '"'}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="${n <= rating ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.5">
+        <polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9 12 2"/>
+      </svg>
+    </${readonly ? 'span' : 'button'}>
+  `).join('');
+
+  if (readonly) return;
+
+  container.querySelectorAll('.star-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const n = parseInt(btn.dataset.star);
+      const next = n === rating ? 0 : n; // clicking the current rating clears it
+      rating = next;
+      renderRatingStars(container, next, { readonly, onChange });
+      if (onChange) onChange(next);
+    });
+  });
+}
 
 // ─── Library Branding (icon + name) ────────────────────────────────────────────
 
@@ -295,6 +325,8 @@ async function init() {
   await loadLibraries();
   await loadTags();
   await loadGenres();
+  await loadStatuses();
+  renderStatusFilterButtons();
   await loadLibrary();
   updateFilterBadges();
 }
@@ -392,14 +424,15 @@ function bindEvents() {
     updateFilterBadges();
     loadLibrary();
   });
-  document.querySelectorAll('.filter-btn[data-status]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      document.querySelectorAll('.filter-btn[data-status]').forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active');
-      state.filterStatus = e.target.dataset.status;
-      updateFilterBadges();
-      loadLibrary();
-    });
+  // Status filter buttons are rendered dynamically by renderStatusFilterButtons()
+  // (called from init() after statuses load), which wires its own click
+  // listeners — nothing static to bind here.
+
+  // Status Management
+  el('btn-manage-statuses').addEventListener('click', openManageStatusesModal);
+  el('btn-add-status').addEventListener('click', addStatus);
+  el('new-status-name').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addStatus(); }
   });
 
   // Genre / Tag filter dropdowns
@@ -740,7 +773,7 @@ async function loadLibrary() {
             ${s.tags.map(t => `<span class="tag-pill" style="color:${t.color}">${escapeHTML(t.name)}</span>`).join('')}
           </div>
         </td>
-        <td><span class="status-badge ${s.status.toLowerCase()}">${s.status}</span></td>
+        <td><span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span></td>
         <td class="col-num">${s.kind === 'standalone' ? '—' : s.volume_count}</td>
         <td class="col-num">${s.character_count}</td>
         <td class="col-actions"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></td>
@@ -802,7 +835,7 @@ async function loadSeriesData(id) {
 function renderSeriesHero(s) {
   dom.heroTop.innerHTML = `
     <div class="hero-status-row">
-      <span class="status-badge ${s.status.toLowerCase()}">${s.status}</span>
+      <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span>
       ${s.kind === 'standalone' ? `<span class="kind-badge">Standalone</span>` : ''}
     </div>
     <h2 class="hero-title">${escapeHTML(s.title)}</h2>
@@ -828,6 +861,53 @@ function renderSeriesHero(s) {
     ` : ''}
     ${s.synopsis ? `<div class="hero-synopsis">${nl2br(s.synopsis)}</div>` : ''}
   `;
+
+  renderHeroExtraDetails(s);
+}
+
+// Renders whichever of the optional "additional details" fields are
+// actually filled in, as a compact label/value grid. Nothing shows at all
+// if none of them were set.
+function renderHeroExtraDetails(s) {
+  let grid = document.getElementById('hero-extra-grid');
+  if (!grid) {
+    grid = document.createElement('div');
+    grid.id = 'hero-extra-grid';
+    grid.className = 'hero-extra-grid';
+    dom.heroDetails.appendChild(grid);
+  }
+
+  const items = [];
+  if (s.rating) items.push({ label: 'Rating', starRating: s.rating });
+  if (s.book_type) items.push({ label: 'Book Type', value: s.book_type });
+  if (s.date_started) items.push({ label: 'Date Started', value: formatDate(s.date_started) });
+  if (s.date_finished) items.push({ label: 'Date Finished', value: formatDate(s.date_finished) });
+  if (s.artist) items.push({ label: 'Artist(s)', value: s.artist });
+  if (s.year_published) items.push({ label: 'Year Published', value: s.year_published });
+  if (s.original_language) items.push({ label: 'Original Language', value: s.original_language });
+  if (s.country_of_origin) items.push({ label: 'Country of Origin', value: s.country_of_origin });
+  if (s.language_read && s.language_read !== 'English') items.push({ label: 'Language Read', value: s.language_read });
+  if (s.status_country_of_origin) items.push({ label: 'Status in Origin', value: s.status_country_of_origin });
+  if (s.licensed_english) items.push({ label: 'Licensed (English)', value: s.licensed_english });
+  if (s.completely_translated) items.push({ label: 'Fully Translated', value: s.completely_translated });
+  if (s.original_publisher) items.push({ label: 'Original Publisher', value: s.original_publisher });
+  if (s.english_publisher) items.push({ label: 'English Publisher', value: s.english_publisher });
+
+  if (items.length === 0) { grid.innerHTML = ''; grid.classList.add('hidden'); return; }
+  grid.classList.remove('hidden');
+
+  grid.innerHTML = items.map(item => `
+    <div class="hero-extra-item">
+      <span class="hero-field-label">${escapeHTML(item.label)}</span>
+      ${item.starRating
+      ? `<div class="hero-extra-value rating-stars readonly" data-stars="${item.starRating}"></div>`
+      : `<span class="hero-extra-value">${escapeHTML(item.value)}</span>`}
+    </div>
+  `).join('');
+
+  grid.querySelectorAll('.rating-stars[data-stars]').forEach(elm => {
+    renderRatingStars(elm, parseInt(elm.dataset.stars), { readonly: true });
+  });
 }
 
 // ─── Standalone Thoughts ────────────────────────────────────────────────────
@@ -871,6 +951,23 @@ async function saveStandaloneThoughts() {
     overall_thoughts: el('f-standalone-thoughts').value.trim(),
     chapter_thoughts: el('f-standalone-chapter-notes').value.trim(),
     cover_image_path: s.cover_image_path,
+    // Carry the additional-details fields through unchanged — this form
+    // doesn't edit them, but seriesUpdate rebuilds every column, so leaving
+    // them out here would silently wipe them to null.
+    rating: s.rating || 0,
+    book_type: s.book_type,
+    date_started: s.date_started,
+    date_finished: s.date_finished,
+    artist: s.artist,
+    year_published: s.year_published,
+    original_language: s.original_language,
+    country_of_origin: s.country_of_origin,
+    language_read: s.language_read,
+    status_country_of_origin: s.status_country_of_origin,
+    licensed_english: s.licensed_english,
+    completely_translated: s.completely_translated,
+    original_publisher: s.original_publisher,
+    english_publisher: s.english_publisher,
   };
   await window.api.series.update(s.id, d);
   toast('Thoughts saved');
@@ -886,6 +983,137 @@ async function loadTags() {
 
 async function loadGenres() {
   state.allGenres = await window.api.genres.getAll();
+}
+
+// ─── Statuses (customizable) ────────────────────────────────────────────
+
+async function loadStatuses() {
+  state.allStatuses = await window.api.statuses.getAll();
+}
+
+// Looks up the stored color for a status name; falls back to the muted
+// text color for anything not (or no longer) in the statuses table, e.g.
+// a status that was deleted after some titles were already set to it.
+function statusColor(name) {
+  const s = state.allStatuses.find(st => st.name.toLowerCase() === (name || '').toLowerCase());
+  return s ? s.color : 'var(--text-muted)';
+}
+
+function renderStatusFilterButtons() {
+  const container = el('status-filter-buttons');
+  const entries = [{ name: 'All' }, ...state.allStatuses];
+  container.innerHTML = entries.map(s => `
+    <button class="filter-btn ${state.filterStatus === s.name ? 'active' : ''}" data-status="${escapeHTML(s.name)}">${escapeHTML(s.name)}</button>
+  `).join('');
+  container.querySelectorAll('.filter-btn[data-status]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      container.querySelectorAll('.filter-btn[data-status]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.filterStatus = btn.dataset.status;
+      updateFilterBadges();
+      loadLibrary();
+    });
+  });
+}
+
+// Populates the series-form status <select> from the current statuses
+// table. If editing a title whose saved status was since deleted/renamed
+// out from under it, that legacy value is kept as an extra option so the
+// form doesn't silently blank out or reassign it on save.
+function renderStatusSelectOptions(selected) {
+  const sel = el('f-s-status');
+  let names = state.allStatuses.map(s => s.name);
+  if (selected && !names.some(n => n.toLowerCase() === selected.toLowerCase())) {
+    names = [selected, ...names];
+  }
+  sel.innerHTML = names.map(n => `<option value="${escapeHTML(n)}">${escapeHTML(n)}</option>`).join('');
+  sel.value = selected || names[0] || '';
+}
+
+function openManageStatusesModal() {
+  renderStatusManageList();
+  openModal('overlay-manage-statuses');
+}
+
+function renderStatusManageList() {
+  const container = el('status-manage-list');
+  if (state.allStatuses.length === 0) {
+    container.innerHTML = `<div class="filter-option-empty">No statuses yet — add one below.</div>`;
+    return;
+  }
+  container.innerHTML = state.allStatuses.map(s => `
+    <div class="status-manage-row" data-id="${s.id}">
+      <input type="color" class="status-color-input" value="${s.color}" data-id="${s.id}" title="Color">
+      <input type="text" class="status-name-input" value="${escapeHTML(s.name)}" data-id="${s.id}" autocomplete="off">
+      <button type="button" class="btn btn-danger-ghost btn-sm status-delete-btn" data-id="${s.id}" title="Delete status">✕</button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.status-color-input').forEach(input => {
+    input.addEventListener('change', () => saveStatusEdit(parseInt(input.dataset.id)));
+  });
+  container.querySelectorAll('.status-name-input').forEach(input => {
+    input.addEventListener('blur', () => saveStatusEdit(parseInt(input.dataset.id)));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+  });
+  container.querySelectorAll('.status-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteStatus(parseInt(btn.dataset.id)));
+  });
+}
+
+// Auto-saves on blur/change rather than needing an explicit save button —
+// mirrors how gallery captions and other lightweight edits work elsewhere.
+async function saveStatusEdit(id) {
+  const row = document.querySelector(`.status-manage-row[data-id="${id}"]`);
+  if (!row) return;
+  const name = row.querySelector('.status-name-input').value.trim();
+  const color = row.querySelector('.status-color-input').value;
+  if (!name) return toast('Status name is required', true);
+
+  try {
+    await window.api.statuses.update(id, { name, color });
+    await loadStatuses();
+    renderStatusManageList();
+    renderStatusFilterButtons();
+    toast('Status updated');
+    if (el('view-library').classList.contains('active')) loadLibrary();
+    if (state.currentSeries) loadSeriesData(state.currentSeries.id).catch(() => { });
+  } catch (e) {
+    toast(e.message || 'Could not update status', true);
+    renderStatusManageList(); // revert the row to last-known-good values
+  }
+}
+
+async function deleteStatus(id) {
+  const s = state.allStatuses.find(st => st.id === id);
+  if (!s) return;
+  confirmDelete(`Delete status "${s.name}"?`, async () => {
+    try {
+      await window.api.statuses.delete(id);
+      await loadStatuses();
+      renderStatusManageList();
+      renderStatusFilterButtons();
+      toast('Status deleted');
+    } catch (e) {
+      toast(e.message || 'Could not delete status', true);
+    }
+  });
+}
+
+async function addStatus() {
+  const name = el('new-status-name').value.trim();
+  const color = el('new-status-color').value;
+  if (!name) return toast('Status name is required', true);
+  try {
+    await window.api.statuses.create({ name, color });
+    el('new-status-name').value = '';
+    await loadStatuses();
+    renderStatusManageList();
+    renderStatusFilterButtons();
+    toast('Status added');
+  } catch (e) {
+    toast(e.message || 'Could not add status', true);
+  }
 }
 
 // ─── Library Filter Dropdowns (Genres / Tags) ──────────────────────────────
@@ -1052,7 +1280,7 @@ function openSeriesModal(series = null) {
     : 'Add New Title';
   el('f-s-title').value = series?.title || '';
   el('f-s-author').value = series?.author || '';
-  el('f-s-status').value = series?.status || 'Planning';
+  renderStatusSelectOptions(series?.status);
   el('f-s-synopsis').value = series?.synopsis || '';
 
   const kind = series?.kind || 'series';
@@ -1083,6 +1311,33 @@ function openSeriesModal(series = null) {
   state.selectedGenres = series ? series.genres.map(g => g.name) : [];
   renderGenreSwatches();
 
+  // Additional details (all optional)
+  state.selectedRating = series?.rating || 0;
+  renderRatingStars(el('f-s-rating-stars'), state.selectedRating, {
+    onChange: (n) => { state.selectedRating = n; el('f-s-rating').value = n; },
+  });
+  el('f-s-rating').value = state.selectedRating;
+  el('f-s-booktype').value = series?.book_type || '';
+  el('f-s-date-started').value = series?.date_started || '';
+  el('f-s-date-finished').value = series?.date_finished || '';
+  el('f-s-artist').value = series?.artist || '';
+  el('f-s-year-pub').value = series?.year_published || '';
+  el('f-s-orig-lang').value = series?.original_language || '';
+  el('f-s-origin-country').value = series?.country_of_origin || '';
+  el('f-s-lang-read').value = series?.language_read || 'English';
+  el('f-s-status-origin').value = series?.status_country_of_origin || '';
+  el('f-s-licensed').value = series?.licensed_english || '';
+  el('f-s-translated').value = series?.completely_translated || '';
+  el('f-s-orig-publisher').value = series?.original_publisher || '';
+  el('f-s-eng-publisher').value = series?.english_publisher || '';
+  // Collapse back to closed each time the modal opens, unless any of these
+  // fields are already filled in — then leave it open so edits are visible.
+  const hasExtraDetails = state.selectedRating || series?.book_type || series?.date_started || series?.date_finished
+    || series?.artist || series?.year_published || series?.original_language || series?.country_of_origin
+    || (series?.language_read && series.language_read !== 'English') || series?.status_country_of_origin
+    || series?.licensed_english || series?.completely_translated || series?.original_publisher || series?.english_publisher;
+  el('series-extra-details') && (el('series-extra-details').open = !!hasExtraDetails);
+
   openModal('overlay-series');
   el('f-s-title').focus();
 }
@@ -1106,6 +1361,21 @@ async function saveSeries() {
       ? state.currentSeries.chapter_thoughts
       : null,
     cover_image_path: el('f-s-kind').value === 'standalone' ? (el('f-s-cover').value || null) : null,
+    // Additional details (all optional)
+    rating: parseInt(el('f-s-rating').value) || 0,
+    book_type: el('f-s-booktype').value.trim(),
+    date_started: el('f-s-date-started').value || null,
+    date_finished: el('f-s-date-finished').value || null,
+    artist: el('f-s-artist').value.trim(),
+    year_published: el('f-s-year-pub').value.trim(),
+    original_language: el('f-s-orig-lang').value.trim(),
+    country_of_origin: el('f-s-origin-country').value.trim(),
+    language_read: el('f-s-lang-read').value.trim() || 'English',
+    status_country_of_origin: el('f-s-status-origin').value.trim(),
+    licensed_english: el('f-s-licensed').value,
+    completely_translated: el('f-s-translated').value,
+    original_publisher: el('f-s-orig-publisher').value.trim(),
+    english_publisher: el('f-s-eng-publisher').value.trim(),
   };
   if (!d.title) return toast('Title is required', true);
 
@@ -1190,6 +1460,7 @@ function openVolumeModal(vol = null) {
   el('f-v-chapters').value = vol?.chapter_range || '';
   el('f-v-count').value = vol?.chapter_count || '';
   el('f-v-date').value = vol?.date_read || '';
+  el('f-v-published').value = vol?.published_date || '';
   el('f-v-thoughts').value = vol?.thoughts || '';
   el('f-v-notes').value = vol?.chapter_notes || '';
   el('f-v-cover').value = vol?.cover_image_path || '';
@@ -1220,6 +1491,7 @@ async function saveVolume() {
     chapter_range: el('f-v-chapters').value.trim(),
     chapter_count: parseInt(el('f-v-count').value) || null,
     date_read: el('f-v-date').value || null,
+    published_date: el('f-v-published').value || null,
     thoughts: el('f-v-thoughts').value.trim(),
     chapter_notes: el('f-v-notes').value.trim(),
     cover_image_path: el('f-v-cover').value || null,
@@ -1257,6 +1529,7 @@ function openVolDetail(v) {
       ${v.chapter_range ? `<span>🔖 ${escapeHTML(v.chapter_range)}</span>` : ''}
       ${v.chapter_count ? `<span>📑 ${v.chapter_count} Chapters</span>` : ''}
       ${v.date_read ? `<span>📅 Read: ${formatDate(v.date_read)}</span>` : ''}
+      ${v.published_date ? `<span>🗓️ Published: ${formatDate(v.published_date)}</span>` : ''}
     </div>
   `;
 
@@ -1867,21 +2140,34 @@ async function boot() {
     showApp();
     await init();
   }
-  // else: leave the auth-gate visible, its "Sign In" button is wired below.
+  // else: leave the auth-gate visible, its form is wired below.
 }
 
-el('btn-auth-signin').addEventListener('click', () => {
-  el('auth-gate-status').textContent = 'Opening your browser to sign in…';
-  window.api.auth.signIn();
+let authMode = 'signin'; // or 'signup'
+
+el('btn-auth-toggle').addEventListener('click', () => {
+  authMode = authMode === 'signin' ? 'signup' : 'signin';
+  el('btn-auth-submit').textContent = authMode === 'signin' ? 'Sign In' : 'Sign Up';
+  el('btn-auth-toggle').textContent = authMode === 'signin' ? 'Need an account? Sign Up' : 'Have an account? Sign In';
+  el('auth-gate-status').textContent = '';
 });
 
-window.api.auth.onSignedIn(async () => {
-  showApp();
-  await init();
-});
+el('auth-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = el('auth-username').value.trim();
+  const password = el('auth-password').value;
+  el('auth-gate-status').textContent = authMode === 'signin' ? 'Signing in…' : 'Creating account…';
 
-window.api.auth.onFailed(() => {
-  el('auth-gate-status').textContent = 'Sign-in failed — please try again.';
+  const result = authMode === 'signin'
+    ? await window.api.auth.signIn(username, password)
+    : await window.api.auth.signUp(username, password);
+
+  if (result.ok) {
+    showApp();
+    await init();
+  } else {
+    el('auth-gate-status').textContent = result.error;
+  }
 });
 
 // ─── Run ──────────────────────────────────────────────────────────────────────
