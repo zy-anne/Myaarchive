@@ -22,6 +22,11 @@ let db;                 // libSQL client (Turso embedded replica)
 let s3;                 // R2 client
 let currentUser = null; // { id, username } — set after successful local sign-in/sign-up
 
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 const getImagesPath = () => path.join(app.getPath('userData'), 'images'); // legacy local images — see note in files:getImageData
 const getAttachmentsPath = () => path.join(app.getPath('userData'), 'attachments'); // legacy local attachments
 const getCacheDir = () => path.join(app.getPath('userData'), 'asset-cache'); // downloaded-from-R2 cache
@@ -146,14 +151,22 @@ app.whenReady().then(async () => {
     syncUrl: process.env.TURSO_DATABASE_URL,
     authToken: process.env.TURSO_AUTH_TOKEN,
   });
-  await ensureUsersTable(db);
-  await dataLayer.ensureStatusesTable(db);
-  // Book-detail expansion: date started/finished, book type, rating,
-  // original language/origin, artist, publishers, licensing status, etc.
-  // (series) and per-volume publication date (volumes). Both are additive
-  // ALTER TABLE migrations — safe to run on every launch.
-  await dataLayer.ensureSeriesExtraColumns(db);
-  await dataLayer.ensureVolumesExtraColumns(db);
+  
+  try {
+    await ensureUsersTable(db);
+    await dataLayer.ensureStatusesTable(db);
+    // Book-detail expansion: date started/finished, book type, rating,
+    // original language/origin, artist, publishers, licensing status, etc.
+    // (series) and per-volume publication date (volumes). Both are additive
+    // ALTER TABLE migrations — safe to run on every launch.
+    await dataLayer.ensureSeriesExtraColumns(db);
+    await dataLayer.ensureVolumesExtraColumns(db);
+  } catch (error) {
+    console.error('Database initialization error:', error);
+    dialog.showErrorBox('Database Error', `Failed to initialize database: ${error.message}`);
+    app.quit();
+    return;
+  }
 
   s3 = createR2Client({
     accountId: process.env.R2_ACCOUNT_ID,

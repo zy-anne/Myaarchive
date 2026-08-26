@@ -18,14 +18,51 @@
 // Turso ships replica support for React Native — tracked as a Phase 5 risk,
 // not something to solve now.
 
-function createDesktopClient({ localDbPath, syncUrl, authToken }) {
+function createDesktopClient({ localDbPath, syncUrl, authToken, deferSync = false }) {
     const { createClient } = require('@libsql/client');
-    return createClient({
+    
+    // Create client with sync enabled from the start
+    const client = createClient({
         url: `file:${localDbPath}`,
         syncUrl,
         authToken,
-        syncInterval: 30, // seconds; also call client.sync() after local writes for freshness
+        syncInterval: 30,
     });
+    
+    // Wrap execute to handle WalConflict with retry logic
+    const originalExecute = client.execute.bind(client);
+    client.execute = async function(query) {
+        const maxRetries = 10;
+        let lastError;
+        
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                return await originalExecute(query);
+            } catch (error) {
+                lastError = error;
+                
+                // Handle WalConflict errors with exponential backoff
+                if (error.message?.includes('WalConflict')) {
+                    const delay = Math.min(50 * Math.pow(2, attempt), 3000);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue;
+                }
+                
+                // Retry on sync conflicts too
+                if (error.message?.includes('SQLITE_BUSY') || error.message?.includes('database is locked')) {
+                    const delay = Math.min(50 * Math.pow(2, attempt), 3000);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue;
+                }
+                
+                // Don't retry other errors
+                throw error;
+            }
+        }
+        throw lastError;
+    };
+    
+    return client;
 }
 
 /**
