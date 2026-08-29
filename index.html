@@ -203,7 +203,8 @@
             <div id="series-hero-top"></div>
             <!-- Tabs -->
             <div class="tab-bar">
-              <button class="tab active" data-tab="volumes" id="tab-volumes">
+              <button class="tab active" data-tab="details" id="tab-details">Details</button>
+              <button class="tab" data-tab="volumes" id="tab-volumes">
                 <span id="tab-volumes-label">Volumes</span> <span class="tab-count" id="vol-tab-count">0</span>
               </button>
               <button class="tab" data-tab="characters" id="tab-characters">
@@ -217,9 +218,13 @@
               </button>
             </div>
           </div>
-          <!-- Volumes / Thoughts Tab -->
-          <div id="pane-volumes" class="tab-pane active">
+          <!-- Details Tab (synopsis, genres/tags, and all the optional book-detail fields — kept
+               separate from Volumes/Thoughts so that pane is just reading progress and notes) -->
+          <div id="pane-details" class="tab-pane active">
             <div id="series-hero-details"></div>
+          </div>
+          <!-- Volumes / Thoughts Tab -->
+          <div id="pane-volumes" class="tab-pane hidden">
             <div class="pane-toolbar">
               <button class="btn btn-primary btn-sm" id="btn-add-volume">+ Add Volume</button>
               <button class="btn btn-ghost btn-sm hidden" id="btn-edit-standalone-thoughts">Edit Thoughts</button>
@@ -740,6 +745,19 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" data-close="overlay-gallery-detail">Cancel</button>
         <button class="btn btn-primary" id="btn-save-gallery-caption">Save Caption</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cover Preview (read-only lightbox for the hero cover) -->
+  <div class="overlay hidden" id="overlay-cover-preview">
+    <div class="modal modal-lg" id="modal-cover-preview">
+      <div class="modal-header">
+        <h2>Cover</h2>
+        <button class="close-btn" data-close="overlay-cover-preview">✕</button>
+      </div>
+      <div class="modal-body">
+        <img id="cover-preview-img" class="gallery-detail-img" src="" alt="Cover">
       </div>
     </div>
   </div>

@@ -406,10 +406,10 @@ a:focus-visible,
 }
 
 .nav-icon-img {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   object-fit: cover;
-  border-radius: 3px;
+  border-radius: 4px;
   display: block;
 }
 
@@ -1242,8 +1242,38 @@ th.col-num {
   padding: 0 var(--gutter) var(--sp-5);
 }
 
-#series-hero-details {
-  padding: 0 var(--gutter) var(--sp-6);
+.hero-top-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-5);
+}
+
+.hero-cover-wrap {
+  width: 150px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.hero-cover-img {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  display: block;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.hero-cover-wrap:hover .hero-cover-img {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-glow);
+}
+
+.hero-top-info {
+  flex: 1;
+  min-width: 0;
 }
 
 .hero-title {
@@ -2502,18 +2532,6 @@ textarea::placeholder {
   font-family: var(--font-ui);
 }
 
-.standalone-cover-wrap {
-  margin-bottom: var(--sp-6);
-}
-
-.standalone-cover-img {
-  width: 140px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
-  display: block;
-}
-
 /* ── Relationships Graph ─────────────────────────────────────────────────── */
 #graph-container {
   flex: 1;
@@ -2885,163 +2903,4 @@ a,
   #sidebar {
     width: 210px;
   }
-}
-
-/* ── Scrollbar ─────────────────────────────────────────── */
-
-/* Global Custom Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.4);
-}
-
-/* Firefox support */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-}
-
-/* ── Titlebar Controls ─────────────────────────────────────────────────── */
-#titlebar {
-  position: absolute;
-  top: 0;
-  right: 0;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  z-index: 1000;
-  -webkit-app-region: drag;
-}
-
-.window-controls {
-  display: flex;
-  -webkit-app-region: no-drag;
-}
-
-.win-btn {
-  width: 46px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.win-btn:hover {
-  background: color-mix(in srgb, var(--text-main) 10%, transparent);
-  color: var(--text-main);
-}
-
-.win-btn-close:hover {
-  background: #E81123;
-  color: #FFF;
-}
-
-/* ── Toast Notifications ────────────────────────────────────────────────── */
-.toast {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text-main);
-  padding: 12px 20px;
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
-  font-size: 13px;
-  z-index: 10000;
-  transition: opacity 0.2s, transform 0.2s;
-}
-
-.toast.hidden {
-  opacity: 0;
-  transform: translateY(10px);
-  pointer-events: none;
-}
-
-/* ── Relationship Form & Graph Extra Details ───────────────────────────── */
-.rel-row {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  margin-bottom: var(--sp-4);
-}
-
-.rel-arrow {
-  font-size: 18px;
-  color: var(--text-muted);
-  padding-top: 16px;
-}
-
-#graph-container {
-  width: 100%;
-  height: calc(100% - 60px);
-  background: var(--bg-color);
-}
-
-.graph-legend {
-  display: flex;
-  gap: var(--sp-3);
-  font-size: 11px;
-  font-family: var(--font-mono);
-}
-
-.graph-hint {
-  position: absolute;
-  bottom: 16px;
-  left: 24px;
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--font-ui);
-}
-
-/* ── Status Management Modal List ────────────────────────────────────────── */
-.status-manage-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-4);
-}
-
-.status-manage-item {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: 8px 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-
-.status-manage-add {
-  display: flex;
-  gap: var(--sp-2);
-  align-items: center;
-}
-
-.status-manage-add input[type="color"] {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  background: none;
 }

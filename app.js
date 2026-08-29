@@ -57,6 +57,7 @@ const dom = {
 
   heroTop: el('series-hero-top'),
   heroDetails: el('series-hero-details'),
+  tabDetails: el('tab-details'),
   tabVols: el('tab-volumes'),
   tabChars: el('tab-characters'),
   tabGallery: el('tab-gallery'),
@@ -65,6 +66,7 @@ const dom = {
   charCount: el('char-tab-count'),
   galleryCount: el('gallery-tab-count'),
   filesCount: el('files-tab-count'),
+  paneDetails: el('pane-details'),
   paneVols: el('pane-volumes'),
   paneChars: el('pane-characters'),
   paneGallery: el('pane-gallery'),
@@ -237,7 +239,7 @@ function renderSidebarNav() {
       <button class="nav-item ${lib.id === state.currentLibraryId ? 'active' : ''}" data-lib-id="${lib.id}">
         <span class="nav-item-icon">${lib.icon === 'custom' && lib.icon_image
       ? `<img class="nav-icon-img" data-key="${escapeHTML(lib.icon_image)}" alt="">`
-      : navIconSvg(lib.icon || 'grid')}</span>
+      : navIconSvg(lib.icon || 'grid', 20)}</span>
         <span>${escapeHTML(lib.name)}</span>
       </button>
       <button class="nav-customize-btn" data-lib-id="${lib.id}" title="Customize category">✎</button>
@@ -438,7 +440,9 @@ function handleAddNewShortcut() {
   if (views.series.classList.contains('active')) {
     const activeTabBtn = document.querySelector('.tab.active');
     const tab = activeTabBtn?.dataset.tab;
-    if (tab === 'volumes') {
+    if (tab === 'details') {
+      openSeriesModal(state.currentSeries);
+    } else if (tab === 'volumes') {
       if (state.currentSeries?.kind === 'standalone') openStandaloneThoughtsModal();
       else openVolumeModal();
     } else if (tab === 'characters') {
@@ -647,6 +651,7 @@ function bindEvents() {
   });
 
   // Tabs
+  dom.tabDetails.addEventListener('click', () => switchTab('details'));
   dom.tabVols.addEventListener('click', () => switchTab('volumes'));
   dom.tabChars.addEventListener('click', () => switchTab('characters'));
   dom.tabGallery.addEventListener('click', () => switchTab('gallery'));
@@ -771,6 +776,7 @@ function switchView(viewId) {
 }
 
 const TAB_PANES = {
+  details: { tab: 'tabDetails', pane: 'paneDetails' },
   volumes: { tab: 'tabVols', pane: 'paneVols' },
   characters: { tab: 'tabChars', pane: 'paneChars' },
   gallery: { tab: 'tabGallery', pane: 'paneGallery' },
@@ -1143,7 +1149,7 @@ function showLibrary() {
 async function openSeriesDetail(id) {
   state.currentSeries = await window.api.series.get(id);
   switchView('view-series');
-  switchTab('volumes');
+  switchTab('details');
   await loadSeriesData(id);
 }
 
@@ -1184,14 +1190,26 @@ async function loadSeriesData(id) {
 }
 
 function renderSeriesHero(s) {
+  const coverHtml = s.cover_image_path
+    ? `<div class="hero-cover-wrap" title="Click to view cover"><img data-key="${escapeHTML(s.cover_image_path)}" class="hero-cover-img" alt="Cover"></div>`
+    : '';
+
   dom.heroTop.innerHTML = `
-    <div class="hero-status-row">
-      <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span>
-      ${s.kind === 'standalone' ? `<span class="kind-badge">Standalone</span>` : ''}
+    <div class="hero-top-row">
+      ${coverHtml}
+      <div class="hero-top-info">
+        <div class="hero-status-row">
+          <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span>
+          ${s.kind === 'standalone' ? `<span class="kind-badge">Standalone</span>` : ''}
+        </div>
+        <h2 class="hero-title">${escapeHTML(s.title)}</h2>
+        <div class="hero-author"><strong>Author:</strong> ${escapeHTML(s.author || '-')}</div>
+      </div>
     </div>
-    <h2 class="hero-title">${escapeHTML(s.title)}</h2>
-    <div class="hero-author"><strong>Author:</strong> ${escapeHTML(s.author || '-')}</div>
   `;
+  fillCoverImages(dom.heroTop);
+  const coverEl = dom.heroTop.querySelector('.hero-cover-wrap');
+  if (coverEl) coverEl.addEventListener('click', () => openCoverPreview(s.cover_image_path));
 
   dom.heroDetails.innerHTML = `
     ${s.genres.length ? `
@@ -1261,67 +1279,31 @@ function renderHeroExtraDetails(s) {
   });
 }
 
+// Opens the cover in a simple full-size lightbox modal — the thumbnail in
+// the hero is deliberately small, this is where you actually look at it.
+async function openCoverPreview(key) {
+  if (!key) return;
+  const imgEl = el('cover-preview-img');
+  imgEl.src = ''; // clear previous image while the new one loads
+  openModal('overlay-cover-preview');
+  const dataUrl = await window.api.files.getImageData(key);
+  if (dataUrl) imgEl.src = dataUrl;
+}
+
 // ─── Standalone Thoughts ────────────────────────────────────────────────────
 
 function renderStandaloneThoughtsView(s) {
   const hasThoughts = s.overall_thoughts || s.chapter_thoughts;
   const view = el('standalone-thoughts-view');
-
   if (!hasThoughts) {
-    const coverHtml = s.cover_image_path
-      ? `<div class="standalone-cover-wrap"><img data-key="${escapeHTML(s.cover_image_path)}" class="standalone-cover-img" alt="Cover"></div>`
-      : '';
-    view.innerHTML = `
-      ${coverHtml}
-      <div class="empty-state">
-        <h3>No thoughts yet</h3>
-        <p>Add your overall thoughts and chapter notes for this book.</p>
-        <button class="btn btn-primary" id="btn-empty-add-thoughts">+ Add Thoughts</button>
-      </div>`;
+    view.innerHTML = `<div class="empty-state"><h3>No thoughts yet</h3><p>Add your overall thoughts and chapter notes for this book.</p><button class="btn btn-primary" id="btn-empty-add-thoughts">+ Add Thoughts</button></div>`;
     el('btn-empty-add-thoughts').addEventListener('click', openStandaloneThoughtsModal);
-    fillCoverImages(view);
     return;
   }
-
-  // Separate metadata layout from the main body content
   view.innerHTML = `
-    <div class="standalone-layout">
-      <!-- Dedicated Book Metadata Sidebar/Card -->
-      <aside class="standalone-metadata-card">
-        ${s.cover_image_path ? `
-          <div class="standalone-cover-wrap">
-            <img data-key="${escapeHTML(s.cover_image_path)}" class="standalone-cover-img" alt="Cover">
-          </div>
-        ` : ''}
-        
-        <div class="metadata-details">
-          ${s.author ? `<div class="meta-item"><strong>Author:</strong> ${escapeHTML(s.author)}</div>` : ''}
-          ${s.status ? `<div class="meta-item"><strong>Status:</strong> <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span></div>` : ''}
-          ${s.rating ? `<div class="meta-item"><strong>Rating:</strong> <span class="rating-stars readonly">${'★'.repeat(s.rating)}</span></div>` : ''}
-          ${s.date_finished ? `<div class="meta-item"><strong>Finished:</strong> ${formatDate(s.date_finished)}</div>` : ''}
-        </div>
-      </aside>
-
-      <!-- Main Thoughts Content Panel -->
-      <main class="standalone-thoughts-content">
-        ${s.overall_thoughts ? `
-          <section class="vol-detail-section">
-            <h4>Overall Thoughts</h4>
-            <div class="vol-detail-text">${nl2br(s.overall_thoughts)}</div>
-          </section>
-        ` : ''}
-
-        ${s.chapter_thoughts ? `
-          <section class="vol-detail-section">
-            <h4>Chapter Notes</h4>
-            <div class="vol-detail-text">${nl2br(s.chapter_thoughts)}</div>
-          </section>
-        ` : ''}
-      </main>
-    </div>
+    ${s.overall_thoughts ? `<div class="vol-detail-section"><h4>Overall Thoughts</h4><div class="vol-detail-text">${nl2br(s.overall_thoughts)}</div></div>` : ''}
+    ${s.chapter_thoughts ? `<div class="vol-detail-section"><h4>Chapter Notes</h4><div class="vol-detail-text">${nl2br(s.chapter_thoughts)}</div></div>` : ''}
   `;
-
-  fillCoverImages(view);
 }
 
 function openStandaloneThoughtsModal() {
