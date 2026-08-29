@@ -2889,62 +2889,29 @@ a,
 
 /* ── Scrollbar ─────────────────────────────────────────── */
 
-/* Update your main container / modal wrapper */
-.standalone-thoughts-view,
-.modal-content,
-.drawer-content {
-  max-height: calc(100vh - 40px);
-  /* Leave space for titlebar/padding */
-  overflow-y: auto;
-  /* Internal custom scrollbar only */
-}
-
-/* Custom Scrollbar Rules (Applied to internal scroll) */
-.standalone-thoughts-view::-webkit-scrollbar,
-.modal-content::-webkit-scrollbar {
+/* Global Custom Scrollbars */
+::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
-.standalone-thoughts-view::-webkit-scrollbar-track,
-.modal-content::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.standalone-thoughts-view::-webkit-scrollbar-thumb,
-.modal-content::-webkit-scrollbar-thumb {
+::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 3px;
 }
 
-.standalone-thoughts-view::-webkit-scrollbar-thumb:hover,
-.modal-content::-webkit-scrollbar-thumb:hover {
+::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.4);
 }
 
-.rel-list-item-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--sp-1);
-}
-
-.rel-list-item-title {
-  font-weight: 500;
-  color: var(--text-main);
-  font-size: 13px;
-}
-
-.rel-list-item-type {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
-.rel-list-item-notes {
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.4;
+/* Firefox support */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 /* ── Titlebar Controls ─────────────────────────────────────────────────── */
