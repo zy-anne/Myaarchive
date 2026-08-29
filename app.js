@@ -1266,20 +1266,61 @@ function renderHeroExtraDetails(s) {
 function renderStandaloneThoughtsView(s) {
   const hasThoughts = s.overall_thoughts || s.chapter_thoughts;
   const view = el('standalone-thoughts-view');
-  const coverHtml = s.cover_image_path
-    ? `<div class="standalone-cover-wrap"><img data-key="${escapeHTML(s.cover_image_path)}" class="standalone-cover-img" alt="Cover"></div>`
-    : '';
+
   if (!hasThoughts) {
-    view.innerHTML = `${coverHtml}<div class="empty-state"><h3>No thoughts yet</h3><p>Add your overall thoughts and chapter notes for this book.</p><button class="btn btn-primary" id="btn-empty-add-thoughts">+ Add Thoughts</button></div>`;
+    const coverHtml = s.cover_image_path
+      ? `<div class="standalone-cover-wrap"><img data-key="${escapeHTML(s.cover_image_path)}" class="standalone-cover-img" alt="Cover"></div>`
+      : '';
+    view.innerHTML = `
+      ${coverHtml}
+      <div class="empty-state">
+        <h3>No thoughts yet</h3>
+        <p>Add your overall thoughts and chapter notes for this book.</p>
+        <button class="btn btn-primary" id="btn-empty-add-thoughts">+ Add Thoughts</button>
+      </div>`;
     el('btn-empty-add-thoughts').addEventListener('click', openStandaloneThoughtsModal);
     fillCoverImages(view);
     return;
   }
+
+  // Separate metadata layout from the main body content
   view.innerHTML = `
-    ${coverHtml}
-    ${s.overall_thoughts ? `<div class="vol-detail-section"><h4>Overall Thoughts</h4><div class="vol-detail-text">${nl2br(s.overall_thoughts)}</div></div>` : ''}
-    ${s.chapter_thoughts ? `<div class="vol-detail-section"><h4>Chapter Notes</h4><div class="vol-detail-text">${nl2br(s.chapter_thoughts)}</div></div>` : ''}
+    <div class="standalone-layout">
+      <!-- Dedicated Book Metadata Sidebar/Card -->
+      <aside class="standalone-metadata-card">
+        ${s.cover_image_path ? `
+          <div class="standalone-cover-wrap">
+            <img data-key="${escapeHTML(s.cover_image_path)}" class="standalone-cover-img" alt="Cover">
+          </div>
+        ` : ''}
+        
+        <div class="metadata-details">
+          ${s.author ? `<div class="meta-item"><strong>Author:</strong> ${escapeHTML(s.author)}</div>` : ''}
+          ${s.status ? `<div class="meta-item"><strong>Status:</strong> <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span></div>` : ''}
+          ${s.rating ? `<div class="meta-item"><strong>Rating:</strong> <span class="rating-stars readonly">${'★'.repeat(s.rating)}</span></div>` : ''}
+          ${s.date_finished ? `<div class="meta-item"><strong>Finished:</strong> ${formatDate(s.date_finished)}</div>` : ''}
+        </div>
+      </aside>
+
+      <!-- Main Thoughts Content Panel -->
+      <main class="standalone-thoughts-content">
+        ${s.overall_thoughts ? `
+          <section class="vol-detail-section">
+            <h4>Overall Thoughts</h4>
+            <div class="vol-detail-text">${nl2br(s.overall_thoughts)}</div>
+          </section>
+        ` : ''}
+
+        ${s.chapter_thoughts ? `
+          <section class="vol-detail-section">
+            <h4>Chapter Notes</h4>
+            <div class="vol-detail-text">${nl2br(s.chapter_thoughts)}</div>
+          </section>
+        ` : ''}
+      </main>
+    </div>
   `;
+
   fillCoverImages(view);
 }
 

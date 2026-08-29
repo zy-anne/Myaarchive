@@ -2886,3 +2886,195 @@ a,
     width: 210px;
   }
 }
+
+/* ── Scrollbar ─────────────────────────────────────────── */
+
+/* Update your main container / modal wrapper */
+.standalone-thoughts-view,
+.modal-content,
+.drawer-content {
+  max-height: calc(100vh - 40px);
+  /* Leave space for titlebar/padding */
+  overflow-y: auto;
+  /* Internal custom scrollbar only */
+}
+
+/* Custom Scrollbar Rules (Applied to internal scroll) */
+.standalone-thoughts-view::-webkit-scrollbar,
+.modal-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.standalone-thoughts-view::-webkit-scrollbar-track,
+.modal-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.standalone-thoughts-view::-webkit-scrollbar-thumb,
+.modal-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.standalone-thoughts-view::-webkit-scrollbar-thumb:hover,
+.modal-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.rel-list-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--sp-1);
+}
+
+.rel-list-item-title {
+  font-weight: 500;
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.rel-list-item-type {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.rel-list-item-notes {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ── Titlebar Controls ─────────────────────────────────────────────────── */
+#titlebar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  z-index: 1000;
+  -webkit-app-region: drag;
+}
+
+.window-controls {
+  display: flex;
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  width: 46px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.win-btn:hover {
+  background: color-mix(in srgb, var(--text-main) 10%, transparent);
+  color: var(--text-main);
+}
+
+.win-btn-close:hover {
+  background: #E81123;
+  color: #FFF;
+}
+
+/* ── Toast Notifications ────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 12px 20px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-size: 13px;
+  z-index: 10000;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.toast.hidden {
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+}
+
+/* ── Relationship Form & Graph Extra Details ───────────────────────────── */
+.rel-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.rel-arrow {
+  font-size: 18px;
+  color: var(--text-muted);
+  padding-top: 16px;
+}
+
+#graph-container {
+  width: 100%;
+  height: calc(100% - 60px);
+  background: var(--bg-color);
+}
+
+.graph-legend {
+  display: flex;
+  gap: var(--sp-3);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.graph-hint {
+  position: absolute;
+  bottom: 16px;
+  left: 24px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+}
+
+/* ── Status Management Modal List ────────────────────────────────────────── */
+.status-manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+
+.status-manage-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.status-manage-add {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.status-manage-add input[type="color"] {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  background: none;
+}
