@@ -44,7 +44,7 @@
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/myaarchive.git
+git clone https://github.com/zy-anne/myaarchive.git
 cd myaarchive
 ```
 
