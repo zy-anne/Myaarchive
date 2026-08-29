@@ -1,0 +1,43 @@
+{
+  "name": "reading-library",
+  "version": "1.0.0",
+  "description": "Personal reading library — track series, volumes, and characters",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "build": {
+    "appId": "com.yourname.myaarchive",
+    "productName": "Myaarchive",
+    "files": [
+      "**/*",
+      "!.env"
+    ],
+    "extraResources": [
+      {
+        "from": ".env",
+        "to": ".env"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1101.0",
+    "@aws-sdk/s3-request-presigner": "^3.1101.0",
+    "@libsql/client": "^0.17.4",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^17.4.2",
+    "vis-network": "^10.1.0"
+  }
+}
