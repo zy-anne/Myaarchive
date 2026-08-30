@@ -1951,44 +1951,34 @@ async function applySeriesCoverFile(sourcePath) {
 }
 
 // ── Lightbox Modal Controller ────────────────────────────────────────────
-
-function getOrCreateLightbox() {
-  let lightbox = document.getElementById('image-lightbox');
-  if (!lightbox) {
-    lightbox = document.createElement('div');
-    lightbox.id = 'image-lightbox';
-    lightbox.className = 'lightbox-overlay';
-    lightbox.innerHTML = `
-      <div class="lightbox-container">
-        <button class="lightbox-close" id="lightbox-close-btn" aria-label="Close modal">✕</button>
-        <img class="lightbox-img" id="lightbox-img" src="" alt="Full view">
-      </div>
-    `;
-    document.body.appendChild(lightbox);
-
-    lightbox.addEventListener('click', (e) => {
-      if (e.target === lightbox || e.target.closest('#lightbox-close-btn')) {
-        closeLightbox();
-      }
-    });
-  }
-  return lightbox;
-}
+// The lightbox markup (#image-lightbox) already exists in index.html, so
+// there's no need to build it dynamically — this just wires the static
+// element up once. Wiring the click listener here (rather than inside
+// openLightbox, and rather than only inside a "create it if missing"
+// branch) is what makes the backdrop and ✕ button actually close it,
+// since the element is never "missing" in the first place.
 
 function openLightbox(src, alt = '') {
-  const lightbox = getOrCreateLightbox();
-  const img = document.getElementById('lightbox-img');
+  const lightbox = el('image-lightbox');
+  const img = el('lightbox-img');
   img.src = src;
   img.alt = alt;
   lightbox.classList.add('open');
 }
 
 function closeLightbox() {
-  const lightbox = document.getElementById('image-lightbox');
+  const lightbox = el('image-lightbox');
   if (lightbox) {
     lightbox.classList.remove('open');
   }
 }
+
+// Clicking the dark backdrop or the ✕ button closes the lightbox.
+el('image-lightbox').addEventListener('click', (e) => {
+  if (e.target.id === 'image-lightbox' || e.target.closest('#lightbox-close-btn')) {
+    closeLightbox();
+  }
+});
 
 // Global Keydown Listener for Escape Key
 document.addEventListener('keydown', (e) => {
