@@ -406,10 +406,10 @@ a:focus-visible,
 }
 
 .nav-icon-img {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: 3px;
   display: block;
 }
 
@@ -976,6 +976,31 @@ th {
   letter-spacing: 0.5px;
 }
 
+/* Sortable column headers (Title / Author / Rating) — clickable, with a
+   directional arrow that only shows on the currently active column so
+   the sort state is visible at a glance without cluttering every header. */
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+th.sortable:hover {
+  color: var(--text-main);
+}
+
+th.sortable.sort-active {
+  color: var(--accent);
+}
+
+th.sortable .sort-arrow {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 9px;
+  letter-spacing: 0;
+  color: var(--accent);
+}
+
 td {
   padding: 18px 16px;
   border-bottom: 1px solid var(--border);
@@ -1242,38 +1267,8 @@ th.col-num {
   padding: 0 var(--gutter) var(--sp-5);
 }
 
-.hero-top-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--sp-5);
-}
-
-.hero-cover-wrap {
-  width: 150px;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-
-.hero-cover-img {
-  width: 100%;
-  aspect-ratio: 2 / 3;
-  object-fit: cover;
-  display: block;
-  background: var(--surface-hover);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-
-.hero-cover-wrap:hover .hero-cover-img {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-glow);
-}
-
-.hero-top-info {
-  flex: 1;
-  min-width: 0;
+#series-hero-details {
+  padding: 0 var(--gutter) var(--sp-6);
 }
 
 .hero-title {
@@ -2530,6 +2525,18 @@ textarea::placeholder {
   color: var(--text-main);
   white-space: pre-wrap;
   font-family: var(--font-ui);
+}
+
+.standalone-cover-wrap {
+  margin-bottom: var(--sp-6);
+}
+
+.standalone-cover-img {
+  width: 140px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  display: block;
 }
 
 /* ── Relationships Graph ─────────────────────────────────────────────────── */

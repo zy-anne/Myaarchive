@@ -160,13 +160,16 @@
           <table id="series-table">
             <thead>
               <tr>
-                <th class="col-title">Title</th>
-                <th class="col-author">Author</th>
+                <th class="col-title sortable" data-sort="title" title="Sort by title">Title<span
+                    class="sort-arrow"></span></th>
+                <th class="col-author sortable" data-sort="author" title="Sort by author">Author<span
+                    class="sort-arrow"></span></th>
                 <th class="col-tags">Genres</th>
                 <th class="col-tags">Tags</th>
                 <th class="col-status">Status</th>
                 <th class="col-num">Vols</th>
-                <th class="col-rating">Rating</th>
+                <th class="col-rating sortable" data-sort="rating" title="Sort by rating">Rating<span
+                    class="sort-arrow"></span></th>
                 <th class="col-actions"></th>
               </tr>
             </thead>
@@ -203,8 +206,7 @@
             <div id="series-hero-top"></div>
             <!-- Tabs -->
             <div class="tab-bar">
-              <button class="tab active" data-tab="details" id="tab-details">Details</button>
-              <button class="tab" data-tab="volumes" id="tab-volumes">
+              <button class="tab active" data-tab="volumes" id="tab-volumes">
                 <span id="tab-volumes-label">Volumes</span> <span class="tab-count" id="vol-tab-count">0</span>
               </button>
               <button class="tab" data-tab="characters" id="tab-characters">
@@ -218,13 +220,9 @@
               </button>
             </div>
           </div>
-          <!-- Details Tab (synopsis, genres/tags, and all the optional book-detail fields — kept
-               separate from Volumes/Thoughts so that pane is just reading progress and notes) -->
-          <div id="pane-details" class="tab-pane active">
-            <div id="series-hero-details"></div>
-          </div>
           <!-- Volumes / Thoughts Tab -->
-          <div id="pane-volumes" class="tab-pane hidden">
+          <div id="pane-volumes" class="tab-pane active">
+            <div id="series-hero-details"></div>
             <div class="pane-toolbar">
               <button class="btn btn-primary btn-sm" id="btn-add-volume">+ Add Volume</button>
               <button class="btn btn-ghost btn-sm hidden" id="btn-edit-standalone-thoughts">Edit Thoughts</button>
@@ -745,19 +743,6 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" data-close="overlay-gallery-detail">Cancel</button>
         <button class="btn btn-primary" id="btn-save-gallery-caption">Save Caption</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Cover Preview (read-only lightbox for the hero cover) -->
-  <div class="overlay hidden" id="overlay-cover-preview">
-    <div class="modal modal-lg" id="modal-cover-preview">
-      <div class="modal-header">
-        <h2>Cover</h2>
-        <button class="close-btn" data-close="overlay-cover-preview">✕</button>
-      </div>
-      <div class="modal-body">
-        <img id="cover-preview-img" class="gallery-detail-img" src="" alt="Cover">
       </div>
     </div>
   </div>

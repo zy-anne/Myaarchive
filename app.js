@@ -39,6 +39,8 @@ let state = {
   theme: 'dark',
   seriesViewMode: 'table', // 'table' | 'card' — persisted via settings
   charViewMode: 'grid',    // 'grid' | 'list' — persisted via settings
+  sortField: 'title',      // 'title' | 'author' | 'rating' — persisted via settings
+  sortDir: 'asc',          // 'asc' | 'desc' — persisted via settings
 };
 
 // ─── Elements ─────────────────────────────────────────────────────────────────
@@ -57,7 +59,6 @@ const dom = {
 
   heroTop: el('series-hero-top'),
   heroDetails: el('series-hero-details'),
-  tabDetails: el('tab-details'),
   tabVols: el('tab-volumes'),
   tabChars: el('tab-characters'),
   tabGallery: el('tab-gallery'),
@@ -66,7 +67,6 @@ const dom = {
   charCount: el('char-tab-count'),
   galleryCount: el('gallery-tab-count'),
   filesCount: el('files-tab-count'),
-  paneDetails: el('pane-details'),
   paneVols: el('pane-volumes'),
   paneChars: el('pane-characters'),
   paneGallery: el('pane-gallery'),
@@ -239,7 +239,7 @@ function renderSidebarNav() {
       <button class="nav-item ${lib.id === state.currentLibraryId ? 'active' : ''}" data-lib-id="${lib.id}">
         <span class="nav-item-icon">${lib.icon === 'custom' && lib.icon_image
       ? `<img class="nav-icon-img" data-key="${escapeHTML(lib.icon_image)}" alt="">`
-      : navIconSvg(lib.icon || 'grid', 20)}</span>
+      : navIconSvg(lib.icon || 'grid')}</span>
         <span>${escapeHTML(lib.name)}</span>
       </button>
       <button class="nav-customize-btn" data-lib-id="${lib.id}" title="Customize category">✎</button>
@@ -405,13 +405,16 @@ const THEME_ICONS = {
   light: '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>',
 };
 
-// Loads theme AND the series/character view-mode preferences in one round
-// trip, since they all live in the same generic per-user settings table.
+// Loads theme AND the series/character view-mode + sort preferences in one
+// round trip, since they all live in the same generic per-user settings
+// table.
 async function loadSettings() {
   const settings = await window.api.settings.getAll();
   state.theme = settings.theme === 'light' ? 'light' : 'dark';
   state.seriesViewMode = settings.seriesViewMode === 'card' ? 'card' : 'table';
   state.charViewMode = settings.charViewMode === 'list' ? 'list' : 'grid';
+  state.sortField = ['title', 'author', 'rating'].includes(settings.sortField) ? settings.sortField : 'title';
+  state.sortDir = settings.sortDir === 'desc' ? 'desc' : 'asc';
   applyTheme();
 }
 
@@ -440,9 +443,7 @@ function handleAddNewShortcut() {
   if (views.series.classList.contains('active')) {
     const activeTabBtn = document.querySelector('.tab.active');
     const tab = activeTabBtn?.dataset.tab;
-    if (tab === 'details') {
-      openSeriesModal(state.currentSeries);
-    } else if (tab === 'volumes') {
+    if (tab === 'volumes') {
       if (state.currentSeries?.kind === 'standalone') openStandaloneThoughtsModal();
       else openVolumeModal();
     } else if (tab === 'characters') {
@@ -504,6 +505,12 @@ function bindEvents() {
   // Series View Toggle (table vs gallery cards)
   el('btn-view-table').addEventListener('click', () => setSeriesViewMode('table'));
   el('btn-view-card').addEventListener('click', () => setSeriesViewMode('card'));
+
+  // Library Table Sorting (Title / Author / Rating column headers) — click
+  // a header to sort by it; click the active header again to flip direction.
+  document.querySelectorAll('#series-table th.sortable').forEach(th => {
+    th.addEventListener('click', () => setSortField(th.dataset.sort));
+  });
 
   // Characters View Toggle (grid vs list)
   el('btn-view-char-grid').addEventListener('click', () => setCharViewMode('grid'));
@@ -651,7 +658,6 @@ function bindEvents() {
   });
 
   // Tabs
-  dom.tabDetails.addEventListener('click', () => switchTab('details'));
   dom.tabVols.addEventListener('click', () => switchTab('volumes'));
   dom.tabChars.addEventListener('click', () => switchTab('characters'));
   dom.tabGallery.addEventListener('click', () => switchTab('gallery'));
@@ -776,7 +782,6 @@ function switchView(viewId) {
 }
 
 const TAB_PANES = {
-  details: { tab: 'tabDetails', pane: 'paneDetails' },
   volumes: { tab: 'tabVols', pane: 'paneVols' },
   characters: { tab: 'tabChars', pane: 'paneChars' },
   gallery: { tab: 'tabGallery', pane: 'paneGallery' },
@@ -868,9 +873,9 @@ function confirmDelete(msg, onConfirm) {
 
 // Applies every active filter (the always-visible status/search/genre/tag
 // controls, plus everything in the More Filters popout) to a list of series
-// and returns the subset that should be visible, sorted by title. Doing
-// this client-side means the More Filters facets never need their own IPC
-// round trip — they're just derived from state.allSeriesRaw.
+// and returns the subset that should be visible. Sorting is handled
+// separately by sortSeriesList() (see below), so the order of what comes
+// back here doesn't matter — it gets sorted right after.
 function applyClientFilters(list) {
   const q = state.searchQuery.trim().toLowerCase();
 
@@ -922,7 +927,68 @@ function applyClientFilters(list) {
     }
 
     return true;
-  }).sort((a, b) => a.title.localeCompare(b.title));
+  });
+}
+
+// ─── Sorting (Library Table) ────────────────────────────────────────────────
+// Sorting is deliberately kept separate from applyClientFilters() so that
+// clicking a column header can just re-sort the already-filtered
+// state.series in place (see applySort()) without re-running every filter
+// predicate or re-fetching from the IPC layer.
+const SORTABLE_FIELDS = ['title', 'author', 'rating'];
+
+function sortSeriesList(list) {
+  const field = SORTABLE_FIELDS.includes(state.sortField) ? state.sortField : 'title';
+  const dir = state.sortDir === 'desc' ? -1 : 1;
+  return [...list].sort((a, b) => {
+    if (field === 'rating') {
+      const diff = (a.rating || 0) - (b.rating || 0);
+      if (diff !== 0) return diff * dir;
+      // Stable, direction-independent tie-break so same-rating titles
+      // don't jump around unpredictably as the sort direction flips.
+      return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+    }
+    const av = (a[field] || '').toString();
+    const bv = (b[field] || '').toString();
+    return av.localeCompare(bv, undefined, { sensitivity: 'base' }) * dir;
+  });
+}
+
+// Re-sorts the already-filtered in-memory list and re-renders both the
+// table and card views — used when a sort header is clicked, so there's no
+// need to re-fetch or re-filter from state.allSeriesRaw.
+function applySort() {
+  state.series = sortSeriesList(state.series);
+  renderSeriesTable();
+  renderSeriesCards();
+  updateSortHeaderUI();
+}
+
+// Reflects state.sortField/state.sortDir onto the clickable table headers:
+// highlights the active column and shows a ▲/▼ arrow for its direction.
+function updateSortHeaderUI() {
+  document.querySelectorAll('#series-table th.sortable').forEach(th => {
+    const isActive = th.dataset.sort === state.sortField;
+    th.classList.toggle('sort-active', isActive);
+    const arrow = th.querySelector('.sort-arrow');
+    if (arrow) arrow.textContent = isActive ? (state.sortDir === 'asc' ? '▲' : '▼') : '';
+  });
+}
+
+// Clicking a header: same field toggles direction; a different field
+// switches to it (ratings default to highest-first, since that's usually
+// what you want to see when you first sort by rating).
+async function setSortField(field) {
+  if (!SORTABLE_FIELDS.includes(field)) return;
+  if (state.sortField === field) {
+    state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    state.sortField = field;
+    state.sortDir = field === 'rating' ? 'desc' : 'asc';
+  }
+  applySort();
+  await window.api.settings.set('sortField', state.sortField);
+  await window.api.settings.set('sortDir', state.sortDir);
 }
 
 // Distinct, non-empty values for a single field across the unfiltered
@@ -1008,13 +1074,13 @@ function renderMoreFilterPanel() {
 
 // Fetches every title in the current library (no status/search/tag/genre
 // filtering — those are applied client-side below), then narrows it down
-// to what should actually be shown. Keeping the raw list in
-// state.allSeriesRaw is also what lets the More Filters popout build its
-// facet checklists (distinct book types, languages, publishers, etc.)
-// without a separate round trip.
+// to what should actually be shown and sorts it per the active sort
+// column. Keeping the raw list in state.allSeriesRaw is also what lets the
+// More Filters popout build its facet checklists (distinct book types,
+// languages, publishers, etc.) without a separate round trip.
 async function loadLibrary() {
   state.allSeriesRaw = await window.api.series.getAll({ libraryId: state.currentLibraryId });
-  state.series = applyClientFilters(state.allSeriesRaw);
+  state.series = sortSeriesList(applyClientFilters(state.allSeriesRaw));
 
   dom.seriesCount.textContent = `${state.series.length} ${state.series.length === 1 ? 'title' : 'titles'}`;
 
@@ -1028,6 +1094,7 @@ async function loadLibrary() {
     renderSeriesCards();
   }
 
+  updateSortHeaderUI();
   applySeriesViewMode();
 }
 
@@ -1149,7 +1216,7 @@ function showLibrary() {
 async function openSeriesDetail(id) {
   state.currentSeries = await window.api.series.get(id);
   switchView('view-series');
-  switchTab('details');
+  switchTab('volumes');
   await loadSeriesData(id);
 }
 
@@ -1190,26 +1257,14 @@ async function loadSeriesData(id) {
 }
 
 function renderSeriesHero(s) {
-  const coverHtml = s.cover_image_path
-    ? `<div class="hero-cover-wrap" title="Click to view cover"><img data-key="${escapeHTML(s.cover_image_path)}" class="hero-cover-img" alt="Cover"></div>`
-    : '';
-
   dom.heroTop.innerHTML = `
-    <div class="hero-top-row">
-      ${coverHtml}
-      <div class="hero-top-info">
-        <div class="hero-status-row">
-          <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span>
-          ${s.kind === 'standalone' ? `<span class="kind-badge">Standalone</span>` : ''}
-        </div>
-        <h2 class="hero-title">${escapeHTML(s.title)}</h2>
-        <div class="hero-author"><strong>Author:</strong> ${escapeHTML(s.author || '-')}</div>
-      </div>
+    <div class="hero-status-row">
+      <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span>
+      ${s.kind === 'standalone' ? `<span class="kind-badge">Standalone</span>` : ''}
     </div>
+    <h2 class="hero-title">${escapeHTML(s.title)}</h2>
+    <div class="hero-author"><strong>Author:</strong> ${escapeHTML(s.author || '-')}</div>
   `;
-  fillCoverImages(dom.heroTop);
-  const coverEl = dom.heroTop.querySelector('.hero-cover-wrap');
-  if (coverEl) coverEl.addEventListener('click', () => openCoverPreview(s.cover_image_path));
 
   dom.heroDetails.innerHTML = `
     ${s.genres.length ? `
@@ -1279,31 +1334,26 @@ function renderHeroExtraDetails(s) {
   });
 }
 
-// Opens the cover in a simple full-size lightbox modal — the thumbnail in
-// the hero is deliberately small, this is where you actually look at it.
-async function openCoverPreview(key) {
-  if (!key) return;
-  const imgEl = el('cover-preview-img');
-  imgEl.src = ''; // clear previous image while the new one loads
-  openModal('overlay-cover-preview');
-  const dataUrl = await window.api.files.getImageData(key);
-  if (dataUrl) imgEl.src = dataUrl;
-}
-
 // ─── Standalone Thoughts ────────────────────────────────────────────────────
 
 function renderStandaloneThoughtsView(s) {
   const hasThoughts = s.overall_thoughts || s.chapter_thoughts;
   const view = el('standalone-thoughts-view');
+  const coverHtml = s.cover_image_path
+    ? `<div class="standalone-cover-wrap"><img data-key="${escapeHTML(s.cover_image_path)}" class="standalone-cover-img" alt="Cover"></div>`
+    : '';
   if (!hasThoughts) {
-    view.innerHTML = `<div class="empty-state"><h3>No thoughts yet</h3><p>Add your overall thoughts and chapter notes for this book.</p><button class="btn btn-primary" id="btn-empty-add-thoughts">+ Add Thoughts</button></div>`;
+    view.innerHTML = `${coverHtml}<div class="empty-state"><h3>No thoughts yet</h3><p>Add your overall thoughts and chapter notes for this book.</p><button class="btn btn-primary" id="btn-empty-add-thoughts">+ Add Thoughts</button></div>`;
     el('btn-empty-add-thoughts').addEventListener('click', openStandaloneThoughtsModal);
+    fillCoverImages(view);
     return;
   }
   view.innerHTML = `
+    ${coverHtml}
     ${s.overall_thoughts ? `<div class="vol-detail-section"><h4>Overall Thoughts</h4><div class="vol-detail-text">${nl2br(s.overall_thoughts)}</div></div>` : ''}
     ${s.chapter_thoughts ? `<div class="vol-detail-section"><h4>Chapter Notes</h4><div class="vol-detail-text">${nl2br(s.chapter_thoughts)}</div></div>` : ''}
   `;
+  fillCoverImages(view);
 }
 
 function openStandaloneThoughtsModal() {
