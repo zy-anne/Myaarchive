@@ -59,6 +59,7 @@ const dom = {
 
   heroTop: el('series-hero-top'),
   heroDetails: el('series-hero-details'),
+  tabDetails: el('tab-details'),
   tabVols: el('tab-volumes'),
   tabChars: el('tab-characters'),
   tabGallery: el('tab-gallery'),
@@ -67,6 +68,7 @@ const dom = {
   charCount: el('char-tab-count'),
   galleryCount: el('gallery-tab-count'),
   filesCount: el('files-tab-count'),
+  paneDetails: el('pane-details'),
   paneVols: el('pane-volumes'),
   paneChars: el('pane-characters'),
   paneGallery: el('pane-gallery'),
@@ -453,6 +455,7 @@ function handleAddNewShortcut() {
     } else if (tab === 'files') {
       el('btn-add-file').click();
     }
+    // 'details' tab has no "add new" action — nothing to do there.
   } else {
     openSeriesModal();
   }
@@ -658,6 +661,7 @@ function bindEvents() {
   });
 
   // Tabs
+  dom.tabDetails.addEventListener('click', () => switchTab('details'));
   dom.tabVols.addEventListener('click', () => switchTab('volumes'));
   dom.tabChars.addEventListener('click', () => switchTab('characters'));
   dom.tabGallery.addEventListener('click', () => switchTab('gallery'));
@@ -782,6 +786,7 @@ function switchView(viewId) {
 }
 
 const TAB_PANES = {
+  details: { tab: 'tabDetails', pane: 'paneDetails' },
   volumes: { tab: 'tabVols', pane: 'paneVols' },
   characters: { tab: 'tabChars', pane: 'paneChars' },
   gallery: { tab: 'tabGallery', pane: 'paneGallery' },
@@ -1216,7 +1221,7 @@ function showLibrary() {
 async function openSeriesDetail(id) {
   state.currentSeries = await window.api.series.get(id);
   switchView('view-series');
-  switchTab('volumes');
+  switchTab('details');
   await loadSeriesData(id);
 }
 
@@ -1257,14 +1262,27 @@ async function loadSeriesData(id) {
 }
 
 function renderSeriesHero(s) {
+  // Render cover image on the left, with top details (status, title, author) on the right
   dom.heroTop.innerHTML = `
-    <div class="hero-status-row">
-      <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span>
-      ${s.kind === 'standalone' ? `<span class="kind-badge">Standalone</span>` : ''}
+    <div class="hero-header-row">
+      ${s.cover_image_path ? `
+        <div class="hero-cover-wrap">
+          <img data-key="${escapeHTML(s.cover_image_path)}" class="hero-cover-img" alt="${escapeHTML(s.title)} Cover">
+        </div>
+      ` : ''}
+      <div class="hero-header-details">
+        <div class="hero-status-row">
+          <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span>
+          ${s.kind === 'standalone' ? `<span class="kind-badge">Standalone</span>` : ''}
+        </div>
+        <h2 class="hero-title">${escapeHTML(s.title)}</h2>
+        <div class="hero-author"><strong>Author:</strong> ${escapeHTML(s.author || '-')}</div>
+      </div>
     </div>
-    <h2 class="hero-title">${escapeHTML(s.title)}</h2>
-    <div class="hero-author"><strong>Author:</strong> ${escapeHTML(s.author || '-')}</div>
   `;
+
+  // Fetch and display image if a key is present
+  fillCoverImages(dom.heroTop);
 
   dom.heroDetails.innerHTML = `
     ${s.genres.length ? `
@@ -1285,7 +1303,15 @@ function renderSeriesHero(s) {
     ` : ''}
     ${s.synopsis ? `<div class="hero-synopsis">${nl2br(s.synopsis)}</div>` : ''}
   `;
-
+  const coverWrap = dom.heroTop.querySelector('.hero-cover-wrap');
+  if (coverWrap) {
+    coverWrap.addEventListener('click', () => {
+      const img = coverWrap.querySelector('.hero-cover-img');
+      if (img && img.src) {
+        openLightbox(img.src, s.title);
+      }
+    });
+  }
   renderHeroExtraDetails(s);
 }
 
@@ -1339,17 +1365,13 @@ function renderHeroExtraDetails(s) {
 function renderStandaloneThoughtsView(s) {
   const hasThoughts = s.overall_thoughts || s.chapter_thoughts;
   const view = el('standalone-thoughts-view');
-  const coverHtml = s.cover_image_path
-    ? `<div class="standalone-cover-wrap"><img data-key="${escapeHTML(s.cover_image_path)}" class="standalone-cover-img" alt="Cover"></div>`
-    : '';
   if (!hasThoughts) {
-    view.innerHTML = `${coverHtml}<div class="empty-state"><h3>No thoughts yet</h3><p>Add your overall thoughts and chapter notes for this book.</p><button class="btn btn-primary" id="btn-empty-add-thoughts">+ Add Thoughts</button></div>`;
+    view.innerHTML = `<div class="empty-state"><h3>No thoughts yet</h3><p>Add your overall thoughts and chapter notes for this book.</p><button class="btn btn-primary" id="btn-empty-add-thoughts">+ Add Thoughts</button></div>`;
     el('btn-empty-add-thoughts').addEventListener('click', openStandaloneThoughtsModal);
     fillCoverImages(view);
     return;
   }
   view.innerHTML = `
-    ${coverHtml}
     ${s.overall_thoughts ? `<div class="vol-detail-section"><h4>Overall Thoughts</h4><div class="vol-detail-text">${nl2br(s.overall_thoughts)}</div></div>` : ''}
     ${s.chapter_thoughts ? `<div class="vol-detail-section"><h4>Chapter Notes</h4><div class="vol-detail-text">${nl2br(s.chapter_thoughts)}</div></div>` : ''}
   `;
@@ -1927,6 +1949,53 @@ async function applySeriesCoverFile(sourcePath) {
     toast(e.message || "Couldn't upload cover image", true);
   }
 }
+
+// ── Lightbox Modal Controller ────────────────────────────────────────────
+
+function getOrCreateLightbox() {
+  let lightbox = document.getElementById('image-lightbox');
+  if (!lightbox) {
+    lightbox = document.createElement('div');
+    lightbox.id = 'image-lightbox';
+    lightbox.className = 'lightbox-overlay';
+    lightbox.innerHTML = `
+      <div class="lightbox-container">
+        <button class="lightbox-close" id="lightbox-close-btn" aria-label="Close modal">✕</button>
+        <img class="lightbox-img" id="lightbox-img" src="" alt="Full view">
+      </div>
+    `;
+    document.body.appendChild(lightbox);
+
+    lightbox.addEventListener('click', (e) => {
+      if (e.target === lightbox || e.target.closest('#lightbox-close-btn')) {
+        closeLightbox();
+      }
+    });
+  }
+  return lightbox;
+}
+
+function openLightbox(src, alt = '') {
+  const lightbox = getOrCreateLightbox();
+  const img = document.getElementById('lightbox-img');
+  img.src = src;
+  img.alt = alt;
+  lightbox.classList.add('open');
+}
+
+function closeLightbox() {
+  const lightbox = document.getElementById('image-lightbox');
+  if (lightbox) {
+    lightbox.classList.remove('open');
+  }
+}
+
+// Global Keydown Listener for Escape Key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeLightbox();
+  }
+});
 
 function openVolumeModal(vol = null) {
   el('modal-volume-title').textContent = vol ? `Edit Volume ${vol.volume_number}` : 'Add Volume';

@@ -206,7 +206,10 @@
             <div id="series-hero-top"></div>
             <!-- Tabs -->
             <div class="tab-bar">
-              <button class="tab active" data-tab="volumes" id="tab-volumes">
+              <button class="tab active" data-tab="details" id="tab-details">
+                Details
+              </button>
+              <button class="tab" data-tab="volumes" id="tab-volumes">
                 <span id="tab-volumes-label">Volumes</span> <span class="tab-count" id="vol-tab-count">0</span>
               </button>
               <button class="tab" data-tab="characters" id="tab-characters">
@@ -220,9 +223,14 @@
               </button>
             </div>
           </div>
-          <!-- Volumes / Thoughts Tab -->
-          <div id="pane-volumes" class="tab-pane active">
+          <!-- Details Tab (genres, tags, synopsis, additional metadata —
+               kept separate from Volumes/Thoughts so those aren't buried
+               under a wall of metadata) -->
+          <div id="pane-details" class="tab-pane active">
             <div id="series-hero-details"></div>
+          </div>
+          <!-- Volumes / Thoughts Tab -->
+          <div id="pane-volumes" class="tab-pane hidden">
             <div class="pane-toolbar">
               <button class="btn btn-primary btn-sm" id="btn-add-volume">+ Add Volume</button>
               <button class="btn btn-ghost btn-sm hidden" id="btn-edit-standalone-thoughts">Edit Thoughts</button>
@@ -878,6 +886,14 @@
         <button class="btn btn-ghost" id="btn-confirm-no">Cancel</button>
         <button class="btn btn-danger" id="btn-confirm-yes">Delete</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Lightbox Modal -->
+  <div class="lightbox-overlay" id="image-lightbox">
+    <div class="lightbox-container">
+      <button class="lightbox-close" id="lightbox-close-btn" aria-label="Close modal">✕</button>
+      <img class="lightbox-img" id="lightbox-img" src="" alt="Full view">
     </div>
   </div>
 
