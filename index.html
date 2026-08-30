@@ -121,20 +121,6 @@
                 </svg>
               </button>
             </div>
-            <!-- Sort control: works the same in table AND gallery view.
-                 The table's own sortable column headers are hidden in
-                 gallery view, so this is what makes sorting possible
-                 there. -->
-            <div class="sort-control" id="sort-control">
-              <span class="sort-control-label">Sort</span>
-              <select id="sort-field-select" aria-label="Sort titles by">
-                <option value="title">Title</option>
-                <option value="author">Author</option>
-                <option value="year_published">Year</option>
-                <option value="rating">Rating</option>
-              </select>
-              <button type="button" class="view-toggle-btn" id="btn-sort-dir" title="Toggle sort direction">▲</button>
-            </div>
             <div class="search-wrap">
               <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="2">
@@ -169,6 +155,24 @@
             <button class="filter-mode-btn" data-mode="AND" id="filter-mode-all">All</button>
           </div>
           <button class="filter-btn filter-clear hidden" id="btn-clear-filters">✕ Clear filters</button>
+          <!-- Sort control: works the same in table AND gallery view. The
+               table's own sortable column headers are hidden in gallery
+               view, so this is what makes sorting possible there. Lives
+               in the filter bar (pushed to the row's end via
+               sort-filter-sep) so it reads as part of the same "how the
+               list is arranged" toolbar as the filters, rather than
+               sitting up in the header next to Search / Add. -->
+          <div class="filter-sep sort-filter-sep"></div>
+          <div class="sort-control" id="sort-control">
+            <span class="sort-control-label">Sort</span>
+            <select id="sort-field-select" aria-label="Sort titles by">
+              <option value="title">Title</option>
+              <option value="author">Author</option>
+              <option value="year_published">Year</option>
+              <option value="rating">Rating</option>
+            </select>
+            <button type="button" class="view-toggle-btn" id="btn-sort-dir" title="Toggle sort direction">▲</button>
+          </div>
         </div>
         <div class="table-wrap">
           <table id="series-table">

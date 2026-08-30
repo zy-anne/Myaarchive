@@ -781,6 +781,16 @@ a:focus-visible,
   margin: 2px 2px;
 }
 
+/* Sort control now lives inside the filter bar (see index.html) instead
+   of the header row, so it reads as part of "how the list is arranged"
+   alongside status/genre/tag/more filters. This separator gets
+   margin-left:auto so it (and the sort control after it) get pushed to
+   the far right of the row, while the actual filters stay grouped on the
+   left — same visual grouping as before, just relocated as one row. */
+.sort-filter-sep {
+  margin-left: auto;
+}
+
 .filter-dropdown-wrap {
   position: relative;
   display: flex;
@@ -2098,6 +2108,30 @@ input::placeholder,
 textarea::placeholder {
   color: var(--text-muted);
   opacity: 1;
+}
+
+/* Native <option> elements aren't affected by the <select>'s own
+   background/color styling above — in Chromium/Electron, the OPEN
+   dropdown list ignores the select's background and instead renders each
+   option against a plain white/system popup while still inheriting the
+   select's text color. In dark mode that meant options like "Author" /
+   "Rating" rendered as light text on that white popup — unreadable, as
+   seen in the screenshot. Styling <option> directly fixes this
+   regardless of color-scheme, since Electron (unlike some browsers)
+   honors per-option background/color. */
+select option {
+  background: var(--surface);
+  color: var(--text-main);
+}
+
+/* Selected/hovered/keyboard-focused option gets a clear highlight instead
+   of relying on the OS default (which, combined with the fix above, could
+   otherwise still end up low-contrast in some themes). */
+select option:checked,
+select option:hover,
+select option:focus {
+  background: var(--accent);
+  color: var(--on-solid);
 }
 
 /* Tag/genre colors are arbitrary user- or seed-defined hex values chosen
