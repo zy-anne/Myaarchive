@@ -121,6 +121,20 @@
                 </svg>
               </button>
             </div>
+            <!-- Sort control: works the same in table AND gallery view.
+                 The table's own sortable column headers are hidden in
+                 gallery view, so this is what makes sorting possible
+                 there. -->
+            <div class="sort-control" id="sort-control">
+              <span class="sort-control-label">Sort</span>
+              <select id="sort-field-select" aria-label="Sort titles by">
+                <option value="title">Title</option>
+                <option value="author">Author</option>
+                <option value="year_published">Year</option>
+                <option value="rating">Rating</option>
+              </select>
+              <button type="button" class="view-toggle-btn" id="btn-sort-dir" title="Toggle sort direction">▲</button>
+            </div>
             <div class="search-wrap">
               <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 stroke-width="2">
@@ -168,6 +182,8 @@
                 <th class="col-tags">Tags</th>
                 <th class="col-status">Status</th>
                 <th class="col-num">Vols</th>
+                <th class="col-num sortable" data-sort="year_published" title="Sort by publication year">Year<span
+                    class="sort-arrow"></span></th>
                 <th class="col-rating sortable" data-sort="rating" title="Sort by rating">Rating<span
                     class="sort-arrow"></span></th>
                 <th class="col-actions"></th>

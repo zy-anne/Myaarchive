@@ -75,6 +75,14 @@
      table wrap, tab panes) so everything lines up on one vertical edge
      instead of each section inventing its own left/right padding. */
   --gutter: 40px;
+
+  /* Tells the browser's own dark/light appearance (native <select>
+     dropdown popups, scrollbars, etc.) which palette to use. Only the
+     closed <select> box is styled by our CSS below — the open options
+     list is drawn by the OS/browser itself, so without this it stays
+     white-on-white-ish and unreadable once --bg-color flips to near-black
+     in dark mode (see the [data-theme="dark"] override further down). */
+  color-scheme: light;
 }
 
 [data-theme="dark"] {
@@ -104,6 +112,11 @@
 
   --role-protagonist: var(--accent);
   --role-antagonist: var(--danger);
+
+  /* Flips native browser-drawn UI (the <select> dropdown popup, scrollbars)
+     to the dark palette so opened dropdowns are actually readable against
+     --bg-color instead of defaulting to the light-mode white popup. */
+  color-scheme: dark;
 }
 
 * {
@@ -649,6 +662,49 @@ a:focus-visible,
 
 .view-toggle-btn.active:hover {
   background: var(--accent);
+}
+
+/* ── Sort Control (works in table AND gallery view) ──────────────────────
+   The table's sortable <th> headers only exist in table view, so this
+   dropdown + direction-toggle pair is the only way to change sort order
+   while browsing the gallery/card view. Styled as one pill so it reads as
+   a single control rather than two unrelated inputs. */
+.sort-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px 4px 3px 12px;
+}
+
+.sort-control-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.sort-control select {
+  width: auto;
+  min-width: 88px;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+}
+
+.sort-control select:focus {
+  border: none;
+  box-shadow: none;
+}
+
+.sort-control .view-toggle-btn {
+  border-radius: calc(var(--radius-sm) - 3px);
 }
 
 /* ── Search & Filters ────────────────────────────────────────────────────── */

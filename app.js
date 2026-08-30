@@ -39,7 +39,7 @@ let state = {
   theme: 'dark',
   seriesViewMode: 'table', // 'table' | 'card' — persisted via settings
   charViewMode: 'grid',    // 'grid' | 'list' — persisted via settings
-  sortField: 'title',      // 'title' | 'author' | 'rating' — persisted via settings
+  sortField: 'title',      // 'title' | 'author' | 'rating' | 'year_published' — persisted via settings
   sortDir: 'asc',          // 'asc' | 'desc' — persisted via settings
 };
 
@@ -415,7 +415,7 @@ async function loadSettings() {
   state.theme = settings.theme === 'light' ? 'light' : 'dark';
   state.seriesViewMode = settings.seriesViewMode === 'card' ? 'card' : 'table';
   state.charViewMode = settings.charViewMode === 'list' ? 'list' : 'grid';
-  state.sortField = ['title', 'author', 'rating'].includes(settings.sortField) ? settings.sortField : 'title';
+  state.sortField = ['title', 'author', 'rating', 'year_published'].includes(settings.sortField) ? settings.sortField : 'title';
   state.sortDir = settings.sortDir === 'desc' ? 'desc' : 'asc';
   applyTheme();
 }
@@ -509,11 +509,20 @@ function bindEvents() {
   el('btn-view-table').addEventListener('click', () => setSeriesViewMode('table'));
   el('btn-view-card').addEventListener('click', () => setSeriesViewMode('card'));
 
-  // Library Table Sorting (Title / Author / Rating column headers) — click
-  // a header to sort by it; click the active header again to flip direction.
+  // Library Table Sorting (Title / Author / Rating / Year column headers) —
+  // click a header to sort by it; click the active header again to flip
+  // direction.
   document.querySelectorAll('#series-table th.sortable').forEach(th => {
     th.addEventListener('click', () => setSortField(th.dataset.sort));
   });
+
+  // Sort control (dropdown + direction toggle) — lives in the view header
+  // so it's visible in both table and gallery/card view. The table's
+  // sortable column headers only exist in table view, so this is the only
+  // way to change sort order while browsing the gallery; it stays in sync
+  // with the table headers either way (see updateSortControlUI).
+  el('sort-field-select').addEventListener('change', (e) => selectSortField(e.target.value));
+  el('btn-sort-dir').addEventListener('click', toggleSortDirection);
 
   // Characters View Toggle (grid vs list)
   el('btn-view-char-grid').addEventListener('click', () => setCharViewMode('grid'));
@@ -940,7 +949,7 @@ function applyClientFilters(list) {
 // clicking a column header can just re-sort the already-filtered
 // state.series in place (see applySort()) without re-running every filter
 // predicate or re-fetching from the IPC layer.
-const SORTABLE_FIELDS = ['title', 'author', 'rating'];
+const SORTABLE_FIELDS = ['title', 'author', 'rating', 'year_published'];
 
 function sortSeriesList(list) {
   const field = SORTABLE_FIELDS.includes(state.sortField) ? state.sortField : 'title';
@@ -953,6 +962,18 @@ function sortSeriesList(list) {
       // don't jump around unpredictably as the sort direction flips.
       return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
     }
+    if (field === 'year_published') {
+      // year_published is stored as free text (see SERIES_EXTRA_FIELDS in
+      // data-layer/index.js), so coerce it to a number for sorting; blank
+      // or non-numeric values sort as 0 (oldest/lowest), same as rating's
+      // "unset" handling above.
+      const ay = parseInt(a.year_published) || 0;
+      const by = parseInt(b.year_published) || 0;
+      const diff = ay - by;
+      if (diff !== 0) return diff * dir;
+      // Same stable, direction-independent tie-break as rating.
+      return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+    }
     const av = (a[field] || '').toString();
     const bv = (b[field] || '').toString();
     return av.localeCompare(bv, undefined, { sensitivity: 'base' }) * dir;
@@ -960,17 +981,19 @@ function sortSeriesList(list) {
 }
 
 // Re-sorts the already-filtered in-memory list and re-renders both the
-// table and card views — used when a sort header is clicked, so there's no
-// need to re-fetch or re-filter from state.allSeriesRaw.
+// table and card views — used whenever the sort field/direction changes,
+// so there's no need to re-fetch or re-filter from state.allSeriesRaw.
 function applySort() {
   state.series = sortSeriesList(state.series);
   renderSeriesTable();
   renderSeriesCards();
   updateSortHeaderUI();
+  updateSortControlUI();
 }
 
 // Reflects state.sortField/state.sortDir onto the clickable table headers:
 // highlights the active column and shows a ▲/▼ arrow for its direction.
+// Only relevant in table view, but harmless to call in card view too.
 function updateSortHeaderUI() {
   document.querySelectorAll('#series-table th.sortable').forEach(th => {
     const isActive = th.dataset.sort === state.sortField;
@@ -980,20 +1003,62 @@ function updateSortHeaderUI() {
   });
 }
 
-// Clicking a header: same field toggles direction; a different field
-// switches to it (ratings default to highest-first, since that's usually
-// what you want to see when you first sort by rating).
+// Reflects state.sortField/state.sortDir onto the standalone sort control
+// (dropdown + direction button) that sits in the view header. This is the
+// only way to change sort order while in gallery/card view, since the
+// clickable table column headers are hidden there — so this control has
+// to work (and stay in sync) regardless of which view is active.
+function updateSortControlUI() {
+  const select = el('sort-field-select');
+  const dirBtn = el('btn-sort-dir');
+  if (!select || !dirBtn) return;
+  select.value = state.sortField;
+  dirBtn.textContent = state.sortDir === 'asc' ? '▲' : '▼';
+  dirBtn.title = state.sortDir === 'asc' ? 'Sorted ascending — click for descending' : 'Sorted descending — click for ascending';
+}
+
+// Persists the current sort field/direction — shared by every entry point
+// that can change them (table header click, sort dropdown, direction
+// toggle button), so they don't each duplicate the same two IPC calls.
+async function persistSort() {
+  await window.api.settings.set('sortField', state.sortField);
+  await window.api.settings.set('sortDir', state.sortDir);
+}
+
+// Clicking a table header: same field toggles direction; a different field
+// switches to it (ratings and publication years default to highest/newest
+// first, since that's usually what you want to see when you first sort by
+// them).
 async function setSortField(field) {
   if (!SORTABLE_FIELDS.includes(field)) return;
   if (state.sortField === field) {
     state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
   } else {
     state.sortField = field;
-    state.sortDir = field === 'rating' ? 'desc' : 'asc';
+    state.sortDir = (field === 'rating' || field === 'year_published') ? 'desc' : 'asc';
   }
   applySort();
-  await window.api.settings.set('sortField', state.sortField);
-  await window.api.settings.set('sortDir', state.sortDir);
+  await persistSort();
+}
+
+// Dropdown version of the same thing — always jumps straight to the
+// chosen field's default direction rather than toggling. (Re-picking the
+// already-selected option from a <select> doesn't fire a 'change' event
+// in the first place, so there's no "toggle on same field" case here.)
+async function selectSortField(field) {
+  if (!SORTABLE_FIELDS.includes(field) || field === state.sortField) return;
+  state.sortField = field;
+  state.sortDir = (field === 'rating' || field === 'year_published') ? 'desc' : 'asc';
+  applySort();
+  await persistSort();
+}
+
+// The standalone direction-toggle button — flips asc/desc for whatever
+// field is currently active, without changing the field itself.
+async function toggleSortDirection() {
+  state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+  applySort();
+  await persistSort();
 }
 
 // Distinct, non-empty values for a single field across the unfiltered
@@ -1100,6 +1165,7 @@ async function loadLibrary() {
   }
 
   updateSortHeaderUI();
+  updateSortControlUI();
   applySeriesViewMode();
 }
 
@@ -1145,6 +1211,7 @@ function renderSeriesTable() {
         </span>
       </td>
       <td class="col-num">${s.kind === 'standalone' ? '<span class="empty-dim">—</span>' : (s.volume_count || 0)}</td>
+      <td class="col-num">${formatCell(s.year_published)}</td>
       <td class="col-rating">${renderRating(s.rating)}</td>
       <td class="col-actions">
         <svg class="row-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
