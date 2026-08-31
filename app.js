@@ -39,7 +39,7 @@ let state = {
   theme: 'dark',
   seriesViewMode: 'table', // 'table' | 'card' — persisted via settings
   charViewMode: 'grid',    // 'grid' | 'list' — persisted via settings
-  sortField: 'title',      // 'title' | 'author' | 'rating' | 'year_published' — persisted via settings
+  sortField: 'title',      // 'title' | 'author' | 'rating' | 'year_published' | 'date_started' | 'date_finished' — persisted via settings
   sortDir: 'asc',          // 'asc' | 'desc' — persisted via settings
 };
 
@@ -415,7 +415,7 @@ async function loadSettings() {
   state.theme = settings.theme === 'light' ? 'light' : 'dark';
   state.seriesViewMode = settings.seriesViewMode === 'card' ? 'card' : 'table';
   state.charViewMode = settings.charViewMode === 'list' ? 'list' : 'grid';
-  state.sortField = ['title', 'author', 'rating', 'year_published'].includes(settings.sortField) ? settings.sortField : 'title';
+  state.sortField = ['title', 'author', 'rating', 'year_published', 'date_started', 'date_finished'].includes(settings.sortField) ? settings.sortField : 'title';
   state.sortDir = settings.sortDir === 'desc' ? 'desc' : 'asc';
   applyTheme();
 }
@@ -949,7 +949,11 @@ function applyClientFilters(list) {
 // clicking a column header can just re-sort the already-filtered
 // state.series in place (see applySort()) without re-running every filter
 // predicate or re-fetching from the IPC layer.
-const SORTABLE_FIELDS = ['title', 'author', 'rating', 'year_published'];
+const SORTABLE_FIELDS = ['title', 'author', 'rating', 'year_published', 'date_started', 'date_finished'];
+
+// Fields that default to descending (newest/highest first) the first time
+// they're selected, rather than ascending (A→Z / oldest first).
+const DESCENDING_BY_DEFAULT = ['rating', 'year_published', 'date_started', 'date_finished'];
 
 function sortSeriesList(list) {
   const field = SORTABLE_FIELDS.includes(state.sortField) ? state.sortField : 'title';
@@ -972,6 +976,17 @@ function sortSeriesList(list) {
       const diff = ay - by;
       if (diff !== 0) return diff * dir;
       // Same stable, direction-independent tie-break as rating.
+      return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+    }
+    if (field === 'date_started' || field === 'date_finished') {
+      // Stored as ISO date strings (YYYY-MM-DD) from <input type="date">.
+      // Coerce to a timestamp for sorting; titles with no date set sort as
+      // 0 (oldest/lowest), same "unset" handling as rating/year above.
+      const at = a[field] ? new Date(a[field]).getTime() : 0;
+      const bt = b[field] ? new Date(b[field]).getTime() : 0;
+      const diff = (at || 0) - (bt || 0);
+      if (diff !== 0) return diff * dir;
+      // Same stable, direction-independent tie-break as rating/year.
       return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
     }
     const av = (a[field] || '').toString();
@@ -1026,16 +1041,16 @@ async function persistSort() {
 }
 
 // Clicking a table header: same field toggles direction; a different field
-// switches to it (ratings and publication years default to highest/newest
-// first, since that's usually what you want to see when you first sort by
-// them).
+// switches to it (ratings, publication years, and start/finish dates
+// default to highest/newest first, since that's usually what you want to
+// see when you first sort by them).
 async function setSortField(field) {
   if (!SORTABLE_FIELDS.includes(field)) return;
   if (state.sortField === field) {
     state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
   } else {
     state.sortField = field;
-    state.sortDir = (field === 'rating' || field === 'year_published') ? 'desc' : 'asc';
+    state.sortDir = DESCENDING_BY_DEFAULT.includes(field) ? 'desc' : 'asc';
   }
   applySort();
   await persistSort();
@@ -1048,7 +1063,7 @@ async function setSortField(field) {
 async function selectSortField(field) {
   if (!SORTABLE_FIELDS.includes(field) || field === state.sortField) return;
   state.sortField = field;
-  state.sortDir = (field === 'rating' || field === 'year_published') ? 'desc' : 'asc';
+  state.sortDir = DESCENDING_BY_DEFAULT.includes(field) ? 'desc' : 'asc';
   applySort();
   await persistSort();
 }
