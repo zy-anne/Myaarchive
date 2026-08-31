@@ -79,6 +79,7 @@ async function bootstrapSchema() {
   // ALTER TABLE migrations — safe to run on every launch.
   await dataLayer.ensureSeriesExtraColumns(db);
   await dataLayer.ensureVolumesExtraColumns(db);
+  await dataLayer.ensureCharacterExtraColumns(db);
 }
 
 function isLocalReplicaCorruptionError(err) {
@@ -321,6 +322,15 @@ handle('series:get', (_, id) => dataLayer.series.get(db, requireUser(), id));
 handle('series:create', (_, d) => dataLayer.series.create(db, requireUser(), d));
 handle('series:update', (_, id, d) => dataLayer.series.update(db, requireUser(), id, d));
 handle('series:delete', (_, id) => dataLayer.series.delete(db, requireUser(), id));
+handle('series:transfer', (_, id, targetLibId) => dataLayer.series.transfer(db, requireUser(), id, targetLibId));
+handle('series:copy', (_, id, targetLibId, opts) => dataLayer.series.copy(db, requireUser(), id, targetLibId, opts));
+
+// ─── IPC: Series Groups (Franchises / Shared Universes) ───────────────────
+handle('seriesGroups:getAll', (_, libraryId) => dataLayer.seriesGroups.getAll(db, requireUser(), libraryId));
+handle('seriesGroups:get', (_, id) => dataLayer.seriesGroups.get(db, requireUser(), id));
+handle('seriesGroups:create', (_, d) => dataLayer.seriesGroups.create(db, requireUser(), d));
+handle('seriesGroups:update', (_, id, d) => dataLayer.seriesGroups.update(db, requireUser(), id, d));
+handle('seriesGroups:delete', (_, id) => dataLayer.seriesGroups.delete(db, requireUser(), id));
 
 // ─── IPC: Volumes ─────────────────────────────────────────────────────────
 handle('volumes:getBySeries', (_, sid) => dataLayer.volumes.getBySeries(db, sid));

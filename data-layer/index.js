@@ -322,19 +322,158 @@ async function seriesUpdate(db, ownerId, id, data) {
   const existing = await seriesGet(db, ownerId, id);
   if (!existing) throw new Error('Series not found for this user');
 
+  let targetLibraryId = existing.library_id;
+  if (data.library_id && data.library_id !== existing.library_id) {
+    const targetLib = await one(db, `SELECT id FROM libraries WHERE id = ? AND owner_id = ?`, [data.library_id, ownerId]);
+    if (targetLib) targetLibraryId = data.library_id;
+  }
+
   await run(db, `
     UPDATE series SET title=?, author=?, status=?, synopsis=?, kind=?, overall_thoughts=?, chapter_thoughts=?, cover_image_path=?,
       book_type=?, rating=?, original_language=?, country_of_origin=?, language_read=?, artist=?, year_published=?,
       date_started=?, date_finished=?, status_country_of_origin=?, licensed_english=?, completely_translated=?,
-      original_publisher=?, english_publisher=?, is_nsfw=?
+      original_publisher=?, english_publisher=?, is_nsfw=?, library_id=?
     WHERE id=?
   `, [data.title, data.author || null, data.status || 'Planning', data.synopsis || null,
   data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
   ...seriesExtraArgs(data),
+  targetLibraryId,
     id]);
   if (data.tags !== undefined) await upsertSeriesTags(db, ownerId, id, data.tags);
   if (data.genres !== undefined) await upsertSeriesGenres(db, id, data.genres);
   return true;
+}
+
+async function seriesTransfer(db, ownerId, id, targetLibraryId) {
+  const existing = await seriesGet(db, ownerId, id);
+  if (!existing) throw new Error('Series not found for this user');
+  const targetLib = await one(db, `SELECT id FROM libraries WHERE id = ? AND owner_id = ?`, [targetLibraryId, ownerId]);
+  if (!targetLib) throw new Error('Target category not found for this user');
+
+  await run(db, `UPDATE series SET library_id = ? WHERE id = ?`, [targetLibraryId, id]);
+  return true;
+}
+
+async function seriesCopy(db, ownerId, id, targetLibraryId, options = {}) {
+  const existing = await seriesGet(db, ownerId, id);
+  if (!existing) throw new Error('Series not found for this user');
+  const targetLib = await one(db, `SELECT id FROM libraries WHERE id = ? AND owner_id = ?`, [targetLibraryId, ownerId]);
+  if (!targetLib) throw new Error('Target category not found for this user');
+
+  const copyData = {
+    title: existing.title,
+    author: existing.author,
+    status: existing.status,
+    synopsis: existing.synopsis,
+    library_id: targetLibraryId,
+    kind: existing.kind,
+    overall_thoughts: existing.overall_thoughts,
+    chapter_thoughts: existing.chapter_thoughts,
+    cover_image_path: existing.cover_image_path,
+    book_type: existing.book_type,
+    rating: existing.rating,
+    original_language: existing.original_language,
+    country_of_origin: existing.country_of_origin,
+    language_read: existing.language_read,
+    artist: existing.artist,
+    year_published: existing.year_published,
+    date_started: existing.date_started,
+    date_finished: existing.date_finished,
+    status_country_of_origin: existing.status_country_of_origin,
+    licensed_english: existing.licensed_english,
+    completely_translated: existing.completely_translated,
+    original_publisher: existing.original_publisher,
+    english_publisher: existing.english_publisher,
+    is_nsfw: existing.is_nsfw ? 1 : 0,
+    tags: existing.tags.map(t => t.name),
+    genres: existing.genres.map(g => g.name),
+  };
+
+  const newSeriesId = await seriesCreate(db, ownerId, copyData);
+
+  const incVolumes = options.includeVolumes !== false;
+  const incChars = options.includeCharacters !== false;
+  const incGallery = options.includeGallery !== false;
+  const incAttachments = options.includeAttachments !== false;
+
+  if (incVolumes) {
+    const vols = await volumesGetBySeries(db, id);
+    for (const v of vols) {
+      await volumesCreate(db, {
+        series_id: newSeriesId,
+        volume_number: v.volume_number,
+        title: v.title,
+        chapter_range: v.chapter_range,
+        chapter_count: v.chapter_count,
+        thoughts: v.thoughts,
+        chapter_notes: v.chapter_notes,
+        cover_image_path: v.cover_image_path,
+        date_read: v.date_read,
+        published_date: v.published_date,
+      });
+    }
+  }
+
+  if (incChars) {
+    const chars = await charactersGetBySeries(db, id);
+    const charIdMap = new Map();
+    for (const c of chars) {
+      const newCharId = await charactersCreate(db, {
+        series_id: newSeriesId,
+        name: c.name,
+        role: c.role,
+        volume_appearances: c.volume_appearances,
+        notes: c.notes,
+        profile_image_path: c.profile_image_path,
+        status_role: c.status_role,
+        overall_vibes: c.overall_vibes,
+        appears_vs_reality: c.appears_vs_reality,
+        personality: c.personality,
+      });
+      charIdMap.set(c.id, newCharId);
+    }
+
+    const rels = await relationshipsGetBySeries(db, id);
+    for (const r of rels) {
+      const newFrom = charIdMap.get(r.from_character_id);
+      const newTo = charIdMap.get(r.to_character_id);
+      if (newFrom && newTo) {
+        await relationshipsCreate(db, {
+          from_character_id: newFrom,
+          to_character_id: newTo,
+          type: r.type,
+          label: r.label,
+          is_bidirectional: r.is_bidirectional,
+          notes: r.notes,
+        });
+      }
+    }
+  }
+
+  if (incGallery) {
+    const pics = await galleryGetBySeries(db, id);
+    for (const g of pics) {
+      await galleryAdd(db, {
+        series_id: newSeriesId,
+        image_path: g.image_path,
+        caption: g.caption,
+      });
+    }
+  }
+
+  if (incAttachments) {
+    const files = await attachmentsGetBySeries(db, id);
+    for (const f of files) {
+      await attachmentsAdd(db, {
+        series_id: newSeriesId,
+        file_path: f.file_path,
+        file_name: f.file_name,
+        file_size: f.file_size,
+      });
+    }
+  }
+
+  return newSeriesId;
 }
 
 async function seriesDelete(db, ownerId, id) {
@@ -375,14 +514,20 @@ async function charactersGetBySeries(db, seriesId) {
 async function charactersGet(db, id) { return one(db, `SELECT * FROM characters WHERE id = ?`, [id]); }
 async function charactersCreate(db, d) {
   const r = await run(db, `
-    INSERT INTO characters (series_id, name, role, volume_appearances, notes, profile_image_path) VALUES (?, ?, ?, ?, ?, ?)
-  `, [d.series_id, d.name, d.role || 'Side', d.volume_appearances || null, d.notes || null, d.profile_image_path || null]);
+    INSERT INTO characters (series_id, name, role, volume_appearances, notes, profile_image_path,
+                            status_role, overall_vibes, appears_vs_reality, personality)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [d.series_id, d.name, d.role || 'Side', d.volume_appearances || null, d.notes || null, d.profile_image_path || null,
+      d.status_role || null, d.overall_vibes || null, d.appears_vs_reality || null, d.personality || null]);
   return Number(r.lastInsertRowid);
 }
 async function charactersUpdate(db, id, d) {
   await run(db, `
-    UPDATE characters SET name=?, role=?, volume_appearances=?, notes=?, profile_image_path=? WHERE id=?
-  `, [d.name, d.role || 'Side', d.volume_appearances || null, d.notes || null, d.profile_image_path || null, id]);
+    UPDATE characters SET name=?, role=?, volume_appearances=?, notes=?, profile_image_path=?,
+      status_role=?, overall_vibes=?, appears_vs_reality=?, personality=?
+    WHERE id=?
+  `, [d.name, d.role || 'Side', d.volume_appearances || null, d.notes || null, d.profile_image_path || null,
+      d.status_role || null, d.overall_vibes || null, d.appears_vs_reality || null, d.personality || null, id]);
   return true;
 }
 async function charactersDelete(db, id) { await run(db, `DELETE FROM characters WHERE id = ?`, [id]); return true; }
@@ -837,6 +982,150 @@ async function ensureCoreSchema(db) {
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS series_groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      library_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      group_type TEXT DEFAULT 'Series Group',
+      description TEXT,
+      cover_image_path TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS series_group_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_id INTEGER NOT NULL,
+      series_id INTEGER NOT NULL,
+      group_role TEXT DEFAULT 'Main Story',
+      position INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(group_id, series_id)
+    )
+  `);
+}
+
+// ─── Series Groups (Umbrella Groups / Shared Universes) ───────────────────
+
+async function seriesGroupsGetAll(db, ownerId, libraryId) {
+  let where = 'WHERE g.library_id IN (SELECT id FROM libraries WHERE owner_id = ?)';
+  const args = [ownerId];
+  if (libraryId) {
+    where += ' AND g.library_id = ?';
+    args.push(libraryId);
+  }
+
+  const groups = await q(db, `
+    SELECT g.*, COUNT(gi.id) as item_count
+    FROM series_groups g
+    LEFT JOIN series_group_items gi ON gi.group_id = g.id
+    ${where}
+    GROUP BY g.id
+    ORDER BY g.name COLLATE NOCASE
+  `, args);
+
+  for (const group of groups) {
+    const items = await q(db, `
+      SELECT gi.id as item_id, gi.group_role, gi.position,
+             s.id, s.title, s.author, s.status, s.kind, s.rating, s.book_type,
+             s.cover_image_path, s.is_nsfw,
+             (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id) as volume_count,
+             (SELECT COUNT(*) FROM characters c WHERE c.series_id = s.id) as character_count
+      FROM series_group_items gi
+      JOIN series s ON gi.series_id = s.id
+      WHERE gi.group_id = ?
+      ORDER BY gi.position, gi.id
+    `, [group.id]);
+    group.items = items.map(item => ({
+      ...item,
+      is_nsfw: !!item.is_nsfw,
+    }));
+  }
+
+  return groups;
+}
+
+async function seriesGroupsGet(db, ownerId, id) {
+  const group = await one(db, `
+    SELECT g.*
+    FROM series_groups g
+    WHERE g.id = ? AND g.library_id IN (SELECT id FROM libraries WHERE owner_id = ?)
+  `, [id, ownerId]);
+  if (!group) return null;
+
+  const items = await q(db, `
+    SELECT gi.id as item_id, gi.group_role, gi.position,
+           s.id, s.title, s.author, s.status, s.kind, s.rating, s.book_type,
+           s.cover_image_path, s.is_nsfw,
+           (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id) as volume_count,
+           (SELECT COUNT(*) FROM characters c WHERE c.series_id = s.id) as character_count
+    FROM series_group_items gi
+    JOIN series s ON gi.series_id = s.id
+    WHERE gi.group_id = ?
+    ORDER BY gi.position, gi.id
+  `, [id]);
+  group.items = items.map(item => ({
+    ...item,
+    is_nsfw: !!item.is_nsfw,
+  }));
+  return group;
+}
+
+async function seriesGroupsCreate(db, ownerId, d) {
+  const lib = await one(db, `SELECT id FROM libraries WHERE id = ? AND owner_id = ?`, [d.library_id, ownerId]);
+  if (!lib) throw new Error('Category not found for this user');
+
+  const r = await run(db, `
+    INSERT INTO series_groups (library_id, name, group_type, description, cover_image_path)
+    VALUES (?, ?, ?, ?, ?)
+  `, [d.library_id, d.name, d.group_type || 'Series Group', d.description || null, d.cover_image_path || null]);
+  const groupId = Number(r.lastInsertRowid);
+
+  if (Array.isArray(d.items)) {
+    for (let i = 0; i < d.items.length; i++) {
+      const item = d.items[i];
+      await run(db, `
+        INSERT OR IGNORE INTO series_group_items (group_id, series_id, group_role, position)
+        VALUES (?, ?, ?, ?)
+      `, [groupId, item.series_id, item.group_role || 'Main Story', item.position !== undefined ? item.position : i]);
+    }
+  }
+
+  return groupId;
+}
+
+async function seriesGroupsUpdate(db, ownerId, id, d) {
+  const existing = await one(db, `
+    SELECT id FROM series_groups WHERE id = ? AND library_id IN (SELECT id FROM libraries WHERE owner_id = ?)
+  `, [id, ownerId]);
+  if (!existing) throw new Error('Series group not found for this user');
+
+  await run(db, `
+    UPDATE series_groups SET name=?, group_type=?, description=?, cover_image_path=? WHERE id=?
+  `, [d.name, d.group_type || 'Series Group', d.description || null, d.cover_image_path || null, id]);
+
+  if (Array.isArray(d.items)) {
+    await run(db, `DELETE FROM series_group_items WHERE group_id = ?`, [id]);
+    for (let i = 0; i < d.items.length; i++) {
+      const item = d.items[i];
+      await run(db, `
+        INSERT OR IGNORE INTO series_group_items (group_id, series_id, group_role, position)
+        VALUES (?, ?, ?, ?)
+      `, [id, item.series_id, item.group_role || 'Main Story', item.position !== undefined ? item.position : i]);
+    }
+  }
+  return true;
+}
+
+async function seriesGroupsDelete(db, ownerId, id) {
+  const existing = await one(db, `
+    SELECT id FROM series_groups WHERE id = ? AND library_id IN (SELECT id FROM libraries WHERE owner_id = ?)
+  `, [id, ownerId]);
+  if (!existing) throw new Error('Series group not found for this user');
+
+  await run(db, `DELETE FROM series_group_items WHERE group_id = ?`, [id]);
+  await run(db, `DELETE FROM series_groups WHERE id = ?`, [id]);
+  return true;
 }
 
 // ─── Migrations: extra book-detail columns ──────────────────────────────
@@ -866,6 +1155,25 @@ async function ensureVolumesExtraColumns(db) {
   } catch { /* no volumes table yet — nothing to migrate */ }
 }
 
+const CHARACTER_EXTRA_FIELDS = [
+  ['status_role', 'TEXT'],           // e.g. "Emperor | Newly crowned emperor who…"
+  ['overall_vibes', 'TEXT'],         // e.g. "Cold, dangerous, suspicious…"
+  ['appears_vs_reality', 'TEXT'],    // e.g. "Appears: … / Reality: …"
+  ['personality', 'TEXT'],           // e.g. "⭐ cold-blooded, ruthless…"
+];
+
+async function ensureCharacterExtraColumns(db) {
+  try {
+    const info = await db.execute(`PRAGMA table_info(characters)`);
+    const existing = new Set(info.rows.map(r => r.name));
+    for (const [name, type] of CHARACTER_EXTRA_FIELDS) {
+      if (!existing.has(name)) {
+        await db.execute(`ALTER TABLE characters ADD COLUMN ${name} ${type}`);
+      }
+    }
+  } catch { /* no characters table yet — nothing to migrate */ }
+}
+
 module.exports = {
   ensureTagsTableIsHealthy,
   ensureTagsTable,
@@ -875,12 +1183,20 @@ module.exports = {
   ensureCoreSchema,
   ensureSeriesExtraColumns,
   ensureVolumesExtraColumns,
+  ensureCharacterExtraColumns,
   libraries: { getAll: librariesGetAll, create: librariesCreate, update: librariesUpdate, delete: librariesDelete },
   tags: { getAll: tagsGetAll, create: tagsCreate },
   genres: { getAll: genresGetAll },
   statuses: { getAll: statusesGetAll, create: statusesCreate, update: statusesUpdate, delete: statusesDelete },
   settings: { getAll: settingsGetAll, set: settingsSet },
-  series: { getAll: seriesGetAll, get: seriesGet, create: seriesCreate, update: seriesUpdate, delete: seriesDelete },
+  series: {
+    getAll: seriesGetAll, get: seriesGet, create: seriesCreate, update: seriesUpdate, delete: seriesDelete,
+    transfer: seriesTransfer, copy: seriesCopy,
+  },
+  seriesGroups: {
+    getAll: seriesGroupsGetAll, get: seriesGroupsGet, create: seriesGroupsCreate,
+    update: seriesGroupsUpdate, delete: seriesGroupsDelete,
+  },
   volumes: { getBySeries: volumesGetBySeries, get: volumesGet, create: volumesCreate, update: volumesUpdate, delete: volumesDelete },
   characters: { getBySeries: charactersGetBySeries, get: charactersGet, create: charactersCreate, update: charactersUpdate, delete: charactersDelete },
   relationships: {

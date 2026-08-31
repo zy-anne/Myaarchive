@@ -38,6 +38,8 @@ let state = {
   selectedNavIcon: 'grid',
   selectedNavIconImage: null,
   theme: 'dark',
+  autoHideSidebar: false,  // boolean — persisted via settings (autoHideSidebar)
+  currentUser: null,       // current signed in user
   seriesViewMode: 'table', // 'table' | 'card' — persisted via settings
   charViewMode: 'grid',    // 'grid' | 'list' — persisted via settings
   sortField: 'title',      // 'title' | 'author' | 'rating' | 'year_published' | 'date_started' | 'date_finished' — persisted via settings
@@ -269,11 +271,21 @@ function applyCurrentLibraryHeader() {
 }
 
 function switchLibrary(id) {
-  if (id === state.currentLibraryId) return;
+  if (id === state.currentLibraryId) {
+    if (state.autoHideSidebar) {
+      el('sidebar')?.classList.remove('sidebar-visible');
+      el('sidebar-backdrop')?.classList.remove('active');
+    }
+    return;
+  }
   state.currentLibraryId = id;
   renderSidebarNav();
   applyCurrentLibraryHeader();
   showLibrary();
+  if (state.autoHideSidebar) {
+    el('sidebar')?.classList.remove('sidebar-visible');
+    el('sidebar-backdrop')?.classList.remove('active');
+  }
 }
 
 function renderIconSwatches() {
@@ -408,29 +420,85 @@ const THEME_ICONS = {
   light: '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>',
 };
 
-// Loads theme AND the series/character view-mode + sort preferences in one
-// round trip, since they all live in the same generic per-user settings
-// table.
+// Loads theme, sidebar auto-hide preference, view modes, and sort preferences in one round trip.
 async function loadSettings() {
   const settings = await window.api.settings.getAll();
   state.theme = settings.theme === 'light' ? 'light' : 'dark';
+  state.autoHideSidebar = settings.autoHideSidebar === 'true';
   state.seriesViewMode = settings.seriesViewMode === 'card' ? 'card' : 'table';
   state.charViewMode = settings.charViewMode === 'list' ? 'list' : 'grid';
   state.sortField = ['title', 'author', 'rating', 'year_published', 'date_started', 'date_finished'].includes(settings.sortField) ? settings.sortField : 'title';
   state.sortDir = settings.sortDir === 'desc' ? 'desc' : 'asc';
   applyTheme();
+  applySidebarAutoHide();
 }
 
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', state.theme);
   el('theme-toggle-icon').innerHTML = THEME_ICONS[state.theme];
   el('theme-toggle-label').textContent = state.theme === 'dark' ? 'Dark Mode' : 'Light Mode';
+  document.querySelectorAll('#settings-theme-chips .type-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.theme === state.theme);
+  });
 }
 
 async function toggleTheme() {
   state.theme = state.theme === 'dark' ? 'light' : 'dark';
   applyTheme();
   await window.api.settings.set('theme', state.theme);
+}
+
+function applySidebarAutoHide() {
+  const isAutoHide = !!state.autoHideSidebar;
+  document.body.classList.toggle('sidebar-autohide', isAutoHide);
+  el('sidebar-hover-edge')?.classList.toggle('hidden', !isAutoHide);
+  document.querySelectorAll('.btn-sidebar-toggle').forEach(btn => {
+    btn.classList.toggle('hidden', !isAutoHide);
+  });
+  const autohideCheckbox = el('setting-autohide-sidebar');
+  if (autohideCheckbox) autohideCheckbox.checked = isAutoHide;
+
+  if (!isAutoHide) {
+    el('sidebar')?.classList.remove('sidebar-visible');
+    el('sidebar-backdrop')?.classList.remove('active');
+  }
+}
+
+async function setSidebarAutoHide(enabled) {
+  state.autoHideSidebar = !!enabled;
+  applySidebarAutoHide();
+  await window.api.settings.set('autoHideSidebar', state.autoHideSidebar ? 'true' : 'false');
+  toast(state.autoHideSidebar ? 'Auto-hide categories enabled' : 'Auto-hide categories disabled');
+}
+
+async function openUserSettingsModal() {
+  const user = await window.api.auth.currentUser();
+  state.currentUser = user;
+  const username = user?.username || 'User';
+  el('settings-username-display').textContent = username;
+  el('settings-username-initial').textContent = username.charAt(0).toUpperCase();
+
+  const autohideCheckbox = el('setting-autohide-sidebar');
+  if (autohideCheckbox) autohideCheckbox.checked = !!state.autoHideSidebar;
+
+  document.querySelectorAll('#settings-theme-chips .type-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.theme === state.theme);
+  });
+
+  openModal('overlay-user-settings');
+}
+
+async function handleSignOut() {
+  await window.api.auth.signOut();
+  closeModal('overlay-user-settings');
+  el('app').classList.add('hidden');
+  el('auth-gate').classList.remove('hidden');
+  el('auth-username').value = '';
+  el('auth-password').value = '';
+  el('auth-gate-status').textContent = 'Signed out successfully.';
+  state.currentSeries = null;
+  state.series = [];
+  state.libraries = [];
 }
 
 // ─── Contextual "Add New" Shortcut (Ctrl/Cmd+N) ────────────────────────────
@@ -463,6 +531,68 @@ function handleAddNewShortcut() {
 }
 
 function bindEvents() {
+  // User Settings & Logout
+  el('btn-open-settings')?.addEventListener('click', openUserSettingsModal);
+  el('btn-settings-signout')?.addEventListener('click', handleSignOut);
+  el('btn-auth-signout')?.addEventListener('click', handleSignOut);
+
+  // Settings Modal Controls
+  el('setting-autohide-sidebar')?.addEventListener('change', (e) => {
+    setSidebarAutoHide(e.target.checked);
+  });
+
+  document.querySelectorAll('#settings-theme-chips .type-chip').forEach(chip => {
+    chip.addEventListener('click', async (e) => {
+      document.querySelectorAll('#settings-theme-chips .type-chip').forEach(c => c.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      const newTheme = e.currentTarget.dataset.theme;
+      if (newTheme !== state.theme) {
+        state.theme = newTheme;
+        applyTheme();
+        await window.api.settings.set('theme', state.theme);
+      }
+    });
+  });
+
+  // Sidebar Drawer Toggle & Hover triggers (for auto-hide mode)
+  document.querySelectorAll('.btn-sidebar-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const sidebar = el('sidebar');
+      const isVisible = sidebar.classList.contains('sidebar-visible');
+      sidebar.classList.toggle('sidebar-visible', !isVisible);
+      el('sidebar-backdrop')?.classList.toggle('active', !isVisible);
+    });
+  });
+
+  el('sidebar-hover-edge')?.addEventListener('mouseenter', () => {
+    if (state.autoHideSidebar) {
+      el('sidebar')?.classList.add('sidebar-visible');
+      el('sidebar-backdrop')?.classList.add('active');
+    }
+  });
+
+  let sidebarHoverTimeout = null;
+  el('sidebar')?.addEventListener('mouseenter', () => {
+    if (sidebarHoverTimeout) clearTimeout(sidebarHoverTimeout);
+  });
+
+  el('sidebar')?.addEventListener('mouseleave', () => {
+    if (state.autoHideSidebar) {
+      sidebarHoverTimeout = setTimeout(() => {
+        if (!document.querySelector('.overlay:not(.hidden)')) {
+          el('sidebar')?.classList.remove('sidebar-visible');
+          el('sidebar-backdrop')?.classList.remove('active');
+        }
+      }, 350);
+    }
+  });
+
+  el('sidebar-backdrop')?.addEventListener('click', () => {
+    el('sidebar')?.classList.remove('sidebar-visible');
+    el('sidebar-backdrop')?.classList.remove('active');
+  });
+
   // Theme
   el('btn-theme-toggle').addEventListener('click', toggleTheme);
 
@@ -632,6 +762,9 @@ function bindEvents() {
   // Series Actions
   el('btn-add-series').addEventListener('click', () => openSeriesModal());
   el('btn-empty-add').addEventListener('click', () => openSeriesModal());
+  el('btn-transfer-series')?.addEventListener('click', () => {
+    if (state.currentSeries) openTransferModal(state.currentSeries);
+  });
   el('btn-edit-series').addEventListener('click', () => openSeriesModal(state.currentSeries));
   el('btn-delete-series').addEventListener('click', () => {
     confirmDelete(`Delete "${state.currentSeries.title}"? This will delete all volumes and characters.`, async () => {
@@ -641,6 +774,32 @@ function bindEvents() {
     });
   });
   el('btn-save-series').addEventListener('click', saveSeries);
+
+  // Transfer / Copy Modal Actions
+  document.querySelectorAll('#transfer-action-chips .type-chip').forEach(chip => {
+    chip.addEventListener('click', (e) => {
+      document.querySelectorAll('#transfer-action-chips .type-chip').forEach(c => c.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      transferMode = e.currentTarget.dataset.action;
+
+      const isCopy = transferMode === 'copy';
+      el('transfer-copy-options').classList.toggle('hidden', !isCopy);
+      el('transfer-action-hint').textContent = isCopy
+        ? 'Creates a new duplicate copy of this book in the destination category.'
+        : 'Moves this book and all its volumes, characters, and notes into the new category.';
+      el('btn-submit-transfer').textContent = isCopy ? 'Copy Book' : 'Transfer Book';
+      el('modal-transfer-title').textContent = isCopy ? 'Copy Book' : 'Transfer Book';
+
+      const currentLibId = transferTargetSeries?.library_id || state.currentLibraryId;
+      Array.from(el('f-transfer-target-lib').options).forEach(opt => {
+        if (parseInt(opt.value) === currentLibId) {
+          opt.disabled = !isCopy;
+        }
+      });
+    });
+  });
+
+  el('btn-submit-transfer').addEventListener('click', handleTransferOrCopySubmit);
 
   // Series Type (Series vs Standalone)
   document.querySelectorAll('#f-s-kind-chips .type-chip').forEach(chip => {
@@ -1933,12 +2092,23 @@ function openSeriesModal(series = null) {
     || series?.is_nsfw;
   el('series-extra-details') && (el('series-extra-details').open = !!hasExtraDetails);
 
+  // Category selection
+  const libSelect = el('f-s-library');
+  if (libSelect) {
+    libSelect.innerHTML = state.libraries.map(l => `
+      <option value="${l.id}" ${(series ? series.library_id === l.id : state.currentLibraryId === l.id) ? 'selected' : ''}>
+        ${escapeHTML(l.name)}
+      </option>
+    `).join('');
+  }
+
   openModal('overlay-series');
   refreshCharCounters('f-s-title', 'f-s-author', 'f-s-synopsis');
   el('f-s-title').focus();
 }
 
 async function saveSeries() {
+  const selectedLibId = parseInt(el('f-s-library')?.value) || state.currentLibraryId;
   const d = {
     title: el('f-s-title').value.trim(),
     author: el('f-s-author').value.trim(),
@@ -1946,7 +2116,7 @@ async function saveSeries() {
     synopsis: el('f-s-synopsis').value.trim(),
     tags: state.selectedTags.map(t => t.name),
     genres: state.selectedGenres,
-    library_id: state.currentLibraryId,
+    library_id: selectedLibId,
     kind: state.currentSeries && el('modal-series-title').textContent.includes('Edit')
       ? state.currentSeries.kind
       : el('f-s-kind').value,
@@ -1977,17 +2147,126 @@ async function saveSeries() {
   if (!d.title) return toast('Title is required', true);
 
   if (state.currentSeries && el('modal-series-title').textContent.includes('Edit')) {
+    const oldLibId = state.currentSeries.library_id || state.currentLibraryId;
     await window.api.series.update(state.currentSeries.id, d);
-    toast('Title updated');
-    loadSeriesData(state.currentSeries.id);
+    if (selectedLibId !== oldLibId) {
+      const targetLibName = state.libraries.find(l => l.id === selectedLibId)?.name || 'category';
+      toast(`Title updated and moved to ${targetLibName}`);
+      closeModal('overlay-series');
+      await loadLibraries();
+      state.currentLibraryId = selectedLibId;
+      await selectLibrary(selectedLibId);
+      await openSeriesDetail(state.currentSeries.id);
+    } else {
+      toast('Title updated');
+      closeModal('overlay-series');
+      loadSeriesData(state.currentSeries.id);
+    }
   } else {
     await window.api.series.create(d);
     toast('Title added');
+    closeModal('overlay-series');
+    if (selectedLibId !== state.currentLibraryId) {
+      await loadLibraries();
+      await selectLibrary(selectedLibId);
+    }
   }
-  closeModal('overlay-series');
   loadTags();
   loadGenres();
   if (el('view-library').classList.contains('active')) loadLibrary();
+}
+
+// ─── Transfer / Copy Modal ───────────────────────────────────────────────────
+
+let transferTargetSeries = null;
+let transferMode = 'transfer'; // 'transfer' | 'copy'
+
+function openTransferModal(series = state.currentSeries) {
+  if (!series) return;
+  transferTargetSeries = series;
+  transferMode = 'transfer';
+
+  el('transfer-book-title').textContent = series.title || 'Untitled';
+  const currentLib = state.libraries.find(l => l.id === (series.library_id || state.currentLibraryId));
+  el('transfer-current-category').textContent = currentLib ? `(currently in: ${currentLib.name})` : '';
+
+  // Reset action chips
+  document.querySelectorAll('#transfer-action-chips .type-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.action === 'transfer');
+  });
+  el('transfer-action-hint').textContent = 'Moves this book and all its volumes, characters, and notes into the new category.';
+  el('transfer-copy-options').classList.add('hidden');
+  el('btn-submit-transfer').textContent = 'Transfer Book';
+  el('modal-transfer-title').textContent = 'Transfer / Copy Book';
+
+  // Populate target library dropdown
+  const targetSelect = el('f-transfer-target-lib');
+  const availableLibs = state.libraries;
+  targetSelect.innerHTML = availableLibs.map(l => {
+    const isCurrent = l.id === (series.library_id || state.currentLibraryId);
+    return `<option value="${l.id}" ${isCurrent ? 'disabled' : ''}>${escapeHTML(l.name)} ${isCurrent ? '(Current Category)' : ''}</option>`;
+  }).join('');
+
+  // Default selection to first non-current category
+  const firstOther = availableLibs.find(l => l.id !== (series.library_id || state.currentLibraryId));
+  if (firstOther) {
+    targetSelect.value = firstOther.id;
+  } else if (availableLibs.length > 0) {
+    targetSelect.value = availableLibs[0].id;
+  }
+
+  // Reset copy checkboxes
+  el('f-copy-opt-volumes').checked = true;
+  el('f-copy-opt-characters').checked = true;
+  el('f-copy-opt-gallery').checked = true;
+
+  openModal('overlay-transfer-series');
+}
+
+async function handleTransferOrCopySubmit() {
+  if (!transferTargetSeries) return;
+  const targetLibId = parseInt(el('f-transfer-target-lib').value);
+  if (!targetLibId) return toast('Please select a destination category', true);
+
+  const targetLib = state.libraries.find(l => l.id === targetLibId);
+  const targetLibName = targetLib ? targetLib.name : 'selected category';
+
+  try {
+    if (transferMode === 'transfer') {
+      if (targetLibId === (transferTargetSeries.library_id || state.currentLibraryId)) {
+        return toast('Book is already in that category', true);
+      }
+      await window.api.series.transfer(transferTargetSeries.id, targetLibId);
+      toast(`Transferred "${transferTargetSeries.title}" to ${targetLibName}`);
+      closeModal('overlay-transfer-series');
+
+      await loadLibraries();
+      if (state.currentSeries && state.currentSeries.id === transferTargetSeries.id) {
+        state.currentLibraryId = targetLibId;
+        await selectLibrary(targetLibId);
+        await openSeriesDetail(transferTargetSeries.id);
+      } else {
+        await loadLibrary();
+      }
+    } else {
+      const opts = {
+        includeVolumes: el('f-copy-opt-volumes').checked,
+        includeCharacters: el('f-copy-opt-characters').checked,
+        includeGallery: el('f-copy-opt-gallery').checked,
+        includeAttachments: el('f-copy-opt-gallery').checked,
+      };
+      await window.api.series.copy(transferTargetSeries.id, targetLibId, opts);
+      toast(`Copied "${transferTargetSeries.title}" to ${targetLibName}`);
+      closeModal('overlay-transfer-series');
+
+      await loadLibraries();
+      if (targetLibId === state.currentLibraryId) {
+        await loadLibrary();
+      }
+    }
+  } catch (err) {
+    toast(err.message || 'Operation failed', true);
+  }
 }
 
 // ─── Volumes ──────────────────────────────────────────────────────────────────
@@ -2287,11 +2566,35 @@ async function applyCharImgFile(sourcePath) {
   }
 }
 
+function formatAppearsVsReality(text) {
+  if (!text) return '';
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  return lines.map(line => {
+    const match = line.match(/^(Appears|Reality|Facade|Truth|Public|Private|Outer|Inner):\s*(.*)$/i);
+    if (match) {
+      return `<p class="lore-contrast-line"><strong>${escapeHTML(match[1])}:</strong> ${escapeHTML(match[2])}</p>`;
+    }
+    return `<p class="lore-contrast-line">${escapeHTML(line)}</p>`;
+  }).join('');
+}
+
+function formatPersonality(text) {
+  if (!text) return '';
+  let trimmed = text.trim();
+  const hasLeadingEmoji = /^[\p{Emoji}\u2728\u2B50\u2705\u274C\u2600-\u26FF]/u.test(trimmed);
+  const prefix = hasLeadingEmoji ? '' : '✨ ';
+  return `${prefix}${nl2br(trimmed)}`;
+}
+
 function openCharModal(char = null) {
   el('modal-char-title').textContent = char ? 'Edit Character' : 'Add Character';
   el('f-c-name').value = char?.name || '';
   el('f-c-role').value = char?.role || 'Side';
   el('f-c-vols').value = char?.volume_appearances || '';
+  el('f-c-status-role').value = char?.status_role || '';
+  el('f-c-overall-vibes').value = char?.overall_vibes || '';
+  el('f-c-appears-vs-reality').value = char?.appears_vs_reality || '';
+  el('f-c-personality').value = char?.personality || '';
   el('f-c-notes').value = char?.notes || '';
   el('f-c-img').value = char?.profile_image_path || '';
 
@@ -2310,7 +2613,10 @@ function openCharModal(char = null) {
   }
 
   openModal('overlay-character');
-  refreshCharCounters('f-c-name', 'f-c-vols', 'f-c-notes');
+  refreshCharCounters(
+    'f-c-name', 'f-c-vols', 'f-c-status-role', 'f-c-overall-vibes',
+    'f-c-appears-vs-reality', 'f-c-personality', 'f-c-notes'
+  );
   el('f-c-name').focus();
 }
 
@@ -2320,6 +2626,10 @@ async function saveCharacter() {
     name: el('f-c-name').value.trim(),
     role: el('f-c-role').value,
     volume_appearances: el('f-c-vols').value.trim(),
+    status_role: el('f-c-status-role').value.trim(),
+    overall_vibes: el('f-c-overall-vibes').value.trim(),
+    appears_vs_reality: el('f-c-appears-vs-reality').value.trim(),
+    personality: el('f-c-personality').value.trim(),
     notes: el('f-c-notes').value.trim(),
     profile_image_path: el('f-c-img').value || null,
   };
@@ -2342,26 +2652,74 @@ async function openCharDrawer(c) {
   const coverSrc = c.profile_data_url
     || (c.profile_image_path ? await window.api.files.getImageData(c.profile_image_path) : null);
 
+  const statusRoleHtml = c.status_role
+    ? nl2br(c.status_role)
+    : (c.role ? `<strong>${escapeHTML(c.role)}</strong>` : '');
+
   dom.drawerBody.innerHTML = `
-    <div class="drawer-profile-header">
-      <div class="drawer-avatar" style="${coverSrc ? `background-image: url('${coverSrc}')` : ''}">
-        ${!coverSrc ? `<span class="char-avatar-fallback" style="font-size:48px; line-height:120px">${c.name.charAt(0).toUpperCase()}</span>` : ''}
-      </div>
-      <div class="drawer-name">${escapeHTML(c.name)}</div>
-      <div class="char-role ${c.role.toLowerCase()}">${escapeHTML(c.role)}</div>
+    <div class="lore-header">
+      <div class="lore-eyebrow">DEEP DIVE</div>
+      <h2 class="lore-title">Character Lore</h2>
+      <div class="lore-divider"></div>
     </div>
-    
-    ${c.volume_appearances ? `
-      <div class="drawer-meta-block">
-        <div class="drawer-meta-label">Appears In</div>
-        <div class="drawer-meta-value">${escapeHTML(c.volume_appearances)}</div>
+
+    <div class="lore-hero">
+      <div class="lore-portrait-card">
+        <div class="lore-portrait-badge">${escapeHTML(c.name)}</div>
+        <div class="lore-portrait-img-wrap" style="${coverSrc ? `background-image: url('${coverSrc}')` : ''}">
+          ${!coverSrc ? `<span class="char-avatar-fallback">${c.name.charAt(0).toUpperCase()}</span>` : ''}
+        </div>
+      </div>
+
+      <div class="lore-hero-meta">
+        ${statusRoleHtml ? `
+          <div class="lore-block">
+            <div class="lore-label">STATUS &amp; ROLE</div>
+            <div class="lore-status-text">${statusRoleHtml}</div>
+          </div>
+        ` : ''}
+
+        ${c.overall_vibes ? `
+          <div class="lore-sep"></div>
+          <div class="lore-block">
+            <div class="lore-label">OVERALL VIBES</div>
+            <div class="lore-vibes-quote">“${escapeHTML(c.overall_vibes.replace(/^["“”]|["“”]$/g, ''))}”</div>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+
+    ${c.appears_vs_reality ? `
+      <div class="lore-section lore-contrast-section">
+        <div class="lore-label">APPEARS VS. REALITY</div>
+        <div class="lore-contrast-card">
+          <div class="lore-contrast-content">
+            ${formatAppearsVsReality(c.appears_vs_reality)}
+          </div>
+        </div>
       </div>
     ` : ''}
-    
+
+    ${c.personality ? `
+      <div class="lore-section">
+        <div class="lore-label">PERSONALITY</div>
+        <div class="lore-personality-card">
+          <div class="lore-personality-text">${formatPersonality(c.personality)}</div>
+        </div>
+      </div>
+    ` : ''}
+
+    ${c.volume_appearances ? `
+      <div class="lore-section">
+        <div class="lore-label">APPEARS IN</div>
+        <div class="lore-simple-meta">${escapeHTML(c.volume_appearances)}</div>
+      </div>
+    ` : ''}
+
     ${c.notes ? `
-      <div class="drawer-meta-block">
-        <div class="drawer-meta-label">Notes</div>
-        <div class="drawer-meta-value">${nl2br(c.notes)}</div>
+      <div class="lore-section">
+        <div class="lore-label">ADDITIONAL NOTES</div>
+        <div class="lore-notes-body">${nl2br(c.notes)}</div>
       </div>
     ` : ''}
   `;

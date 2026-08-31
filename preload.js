@@ -23,8 +23,17 @@ contextBridge.exposeInMainWorld('api', {
     create: (d) => invoke('series:create', d),
     update: (id, d) => invoke('series:update', id, d),
     delete: (id) => invoke('series:delete', id),
+    transfer: (id, targetLibId) => invoke('series:transfer', id, targetLibId),
+    copy: (id, targetLibId, opts) => invoke('series:copy', id, targetLibId, opts),
     getFilterOptions: (libraryId) => invoke('series:getFilterOptions', libraryId),
     findDuplicate: (title, excludeId) => invoke('series:findDuplicate', title, excludeId),
+  },
+  seriesGroups: {
+    getAll: (libraryId) => invoke('seriesGroups:getAll', libraryId),
+    get: (id) => invoke('seriesGroups:get', id),
+    create: (d) => invoke('seriesGroups:create', d),
+    update: (id, d) => invoke('seriesGroups:update', id, d),
+    delete: (id) => invoke('seriesGroups:delete', id),
   },
   volumes: {
     getBySeries: (sid) => invoke('volumes:getBySeries', sid),

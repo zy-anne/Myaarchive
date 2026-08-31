@@ -63,6 +63,10 @@
       </div>
     </div>
 
+    <!-- Sidebar Backdrop & Hover Trigger (Auto-hide mode) -->
+    <div id="sidebar-hover-edge" class="sidebar-hover-edge hidden"></div>
+    <div id="sidebar-backdrop" class="sidebar-backdrop hidden"></div>
+
     <!-- ── Sidebar ───────────────────────────────────────────── -->
     <nav id="sidebar">
       <div class="sidebar-brand">
@@ -73,6 +77,13 @@
         <button class="nav-add-library" id="btn-add-library">+ Add Category</button>
       </div>
       <div class="sidebar-footer">
+        <button class="nav-item" id="btn-open-settings">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span>User Settings</span>
+        </button>
         <button class="nav-item" id="btn-theme-toggle">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             id="theme-toggle-icon">
@@ -98,6 +109,14 @@
       <section id="view-library" class="view active">
         <header class="view-header">
           <div class="header-left">
+            <button class="btn-sidebar-toggle hidden" id="btn-sidebar-toggle" title="Toggle Categories Drawer">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+              <span>Categories</span>
+            </button>
             <h1 class="view-title" id="library-title">My Library</h1>
             <button class="btn-icon-edit" id="btn-customize-title" title="Customize icon &amp; name">✎</button>
             <span id="series-count" class="count-badge">0 titles</span>
@@ -130,6 +149,7 @@
               <input type="text" id="search-input" placeholder="Search title or author…" maxlength="300"
                 autocomplete="off">
             </div>
+            <button class="btn btn-ghost btn-sm" id="btn-add-series-group" title="Create a Series Group / Universe">+ New Group</button>
             <button class="btn btn-primary" id="btn-add-series">+ Add New Title</button>
           </div>
         </header>
@@ -155,13 +175,6 @@
             <button class="filter-mode-btn" data-mode="AND" id="filter-mode-all">All</button>
           </div>
           <button class="filter-btn filter-clear hidden" id="btn-clear-filters">✕ Clear filters</button>
-          <!-- Sort control: works the same in table AND gallery view. The
-               table's own sortable column headers are hidden in gallery
-               view, so this is what makes sorting possible there. Lives
-               in the filter bar (pushed to the row's end via
-               sort-filter-sep) so it reads as part of the same "how the
-               list is arranged" toolbar as the filters, rather than
-               sitting up in the header next to Search / Add. -->
           <div class="filter-sep sort-filter-sep"></div>
           <div class="sort-control" id="sort-control">
             <span class="sort-control-label">Sort</span>
@@ -176,6 +189,19 @@
             <button type="button" class="view-toggle-btn" id="btn-sort-dir" title="Toggle sort direction">▲</button>
           </div>
         </div>
+
+        <!-- Series Groups (Collapsible Umbrella Cards) -->
+        <div id="series-groups-section" class="series-groups-section hidden">
+          <div class="groups-section-header">
+            <div class="groups-section-title">
+              <span class="groups-section-label">SERIES GROUPS &amp; SHARED UNIVERSES</span>
+              <span class="count-badge" id="groups-count">0 groups</span>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="btn-section-add-group">+ New Group</button>
+          </div>
+          <div id="series-groups-list" class="series-groups-list"></div>
+        </div>
+
         <div class="table-wrap">
           <table id="series-table">
             <thead>
@@ -220,6 +246,15 @@
                 Library
               </button>
               <div class="header-right">
+                <button class="btn btn-ghost btn-sm" id="btn-transfer-series" title="Transfer or copy to another category">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="17 1 21 5 17 9"></polyline>
+                    <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                    <polyline points="7 23 3 19 7 15"></polyline>
+                    <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                  </svg>
+                  Transfer / Copy
+                </button>
                 <button class="btn btn-ghost btn-sm" id="btn-edit-series">Edit</button>
                 <button class="btn btn-danger-ghost btn-sm" id="btn-delete-series">Delete</button>
               </div>
@@ -350,6 +385,10 @@
               <select id="f-s-status"></select>
               <button type="button" class="btn btn-ghost btn-sm" id="btn-manage-statuses">Manage</button>
             </div>
+          </div>
+          <div class="form-group" id="group-s-category">
+            <label for="f-s-library">Category</label>
+            <select id="f-s-library"></select>
           </div>
         </div>
         <div class="form-group">
@@ -618,7 +657,7 @@
 
   <!-- Character Form -->
   <div class="overlay hidden" id="overlay-character">
-    <div class="modal" id="modal-character">
+    <div class="modal modal-lg" id="modal-character">
       <div class="modal-header">
         <h2 id="modal-char-title">Add Character</h2>
         <button class="close-btn" data-close="overlay-character">✕</button>
@@ -651,9 +690,34 @@
             <span class="char-counter" id="f-c-vols-counter">0 / 300</span>
           </div>
         </div>
+
         <div class="form-group">
-          <label for="f-c-notes">Notes</label>
-          <textarea id="f-c-notes" rows="4" maxlength="10000" placeholder="Personality, arc, traits…"></textarea>
+          <label for="f-c-status-role">Status &amp; Role <span class="optional">(e.g. Emperor | Newly crowned emperor who…)</span></label>
+          <textarea id="f-c-status-role" rows="2" maxlength="2000" placeholder="Title, rank, status, and summary of their role…"></textarea>
+          <span class="char-counter" id="f-c-status-role-counter">0 / 2000</span>
+        </div>
+
+        <div class="form-group">
+          <label for="f-c-overall-vibes">Overall Vibes <span class="optional">(one-line tagline or quote)</span></label>
+          <input id="f-c-overall-vibes" type="text" placeholder='e.g. "Cold, dangerous, suspicious, calculating, possessive…"' maxlength="500">
+          <span class="char-counter" id="f-c-overall-vibes-counter">0 / 500</span>
+        </div>
+
+        <div class="form-group">
+          <label for="f-c-appears-vs-reality">Appears vs. Reality <span class="optional">(contrast or facade vs true self)</span></label>
+          <textarea id="f-c-appears-vs-reality" rows="4" maxlength="4000" placeholder="Appears: A merciless ruler who sees everyone around him as potential enemies.&#10;&#10;Reality: Still ruthless, but increasingly helpless against his Chief Minister."></textarea>
+          <span class="char-counter" id="f-c-appears-vs-reality-counter">0 / 4000</span>
+        </div>
+
+        <div class="form-group">
+          <label for="f-c-personality">Personality <span class="optional">(key traits, quirks, weaknesses)</span></label>
+          <textarea id="f-c-personality" rows="3" maxlength="3000" placeholder="e.g. ✨ cold-blooded, ruthless, and willing to use political manipulation…"></textarea>
+          <span class="char-counter" id="f-c-personality-counter">0 / 3000</span>
+        </div>
+
+        <div class="form-group">
+          <label for="f-c-notes">Additional Notes <span class="optional">(optional general notes)</span></label>
+          <textarea id="f-c-notes" rows="3" maxlength="10000" placeholder="Other notes, backstories, secrets…"></textarea>
           <span class="char-counter" id="f-c-notes-counter">0 / 10000</span>
         </div>
       </div>
@@ -908,6 +972,184 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" id="btn-more-filter-clear">Clear these</button>
         <button class="btn btn-primary" id="btn-more-filter-done">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Transfer / Copy Series Modal -->
+  <div class="overlay hidden" id="overlay-transfer-series">
+    <div class="modal" id="modal-transfer-series">
+      <div class="modal-header">
+        <h2 id="modal-transfer-title">Transfer / Copy Book</h2>
+        <button class="close-btn" data-close="overlay-transfer-series">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="transfer-book-info">
+          <span class="transfer-book-label">Book:</span>
+          <span class="transfer-book-title" id="transfer-book-title">—</span>
+          <span class="transfer-current-category" id="transfer-current-category"></span>
+        </div>
+
+        <div class="form-group">
+          <label>Action</label>
+          <div class="type-chips" id="transfer-action-chips">
+            <button type="button" class="type-chip active" data-action="transfer" id="chip-action-transfer">
+              Transfer (Move)
+            </button>
+            <button type="button" class="type-chip" data-action="copy" id="chip-action-copy">
+              Copy (Duplicate)
+            </button>
+          </div>
+          <p class="form-hint" id="transfer-action-hint">Moves this book and all its volumes, characters, and notes into the new category.</p>
+        </div>
+
+        <div class="form-group">
+          <label for="f-transfer-target-lib">Destination Category <span class="req">*</span></label>
+          <select id="f-transfer-target-lib" required></select>
+        </div>
+
+        <div class="transfer-copy-options hidden" id="transfer-copy-options">
+          <label class="options-label">Copy Options</label>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="f-copy-opt-volumes" checked>
+              <span>Include Volumes &amp; Chapter Notes</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="f-copy-opt-characters" checked>
+              <span>Include Characters &amp; Relationships</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="f-copy-opt-gallery" checked>
+              <span>Include Pictures &amp; Attachments</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-transfer-series">Cancel</button>
+        <button class="btn btn-primary" id="btn-submit-transfer">Transfer Book</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Settings Modal -->
+  <div class="overlay hidden" id="overlay-user-settings">
+    <div class="modal modal-md" id="modal-user-settings">
+      <div class="modal-header">
+        <h2>User Settings</h2>
+        <button class="close-btn" data-close="overlay-user-settings">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Account Info -->
+        <div class="settings-section">
+          <div class="settings-section-title">Account</div>
+          <div class="settings-account-card">
+            <div class="settings-avatar-circle">
+              <span id="settings-username-initial">?</span>
+            </div>
+            <div class="settings-account-info">
+              <div class="settings-username" id="settings-username-display">—</div>
+              <div class="settings-sync-status">Personal Library Account</div>
+            </div>
+            <button class="btn btn-danger-ghost btn-sm" id="btn-settings-signout" title="Sign out of this device">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              Log Out
+            </button>
+          </div>
+        </div>
+
+        <!-- Layout & Navigation -->
+        <div class="settings-section">
+          <div class="settings-section-title">Layout &amp; Navigation</div>
+          
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <div class="settings-row-label">Auto-hide Categories Drawer</div>
+              <div class="settings-row-desc">Automatically collapses the categories sidebar to maximize your reading space. Hover over the left edge or click the Categories button to reveal it.</div>
+            </div>
+            <label class="toggle-label">
+              <input type="checkbox" id="setting-autohide-sidebar">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </label>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <div class="settings-row-label">Color Theme</div>
+              <div class="settings-row-desc">Switch between Light Mode and Dark Mode reading palettes.</div>
+            </div>
+            <div class="type-chips" id="settings-theme-chips">
+              <button type="button" class="type-chip" data-theme="dark" id="chip-theme-dark">Dark Mode</button>
+              <button type="button" class="type-chip" data-theme="light" id="chip-theme-light">Light Mode</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" data-close="overlay-user-settings">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Series Group (Franchise / Shared Universe) Form -->
+  <div class="overlay hidden" id="overlay-series-group">
+    <div class="modal modal-lg" id="modal-series-group">
+      <div class="modal-header">
+        <h2 id="modal-group-title">New Series Group / Universe</h2>
+        <button class="close-btn" data-close="overlay-series-group">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group" style="flex: 2;">
+            <label for="f-g-name">Group / Universe Name <span class="req">*</span></label>
+            <input id="f-g-name" type="text" placeholder="e.g. The Folk of the Air Universe, Six of Crows Duology…" maxlength="300" required>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label for="f-g-type">Group Type</label>
+            <select id="f-g-type">
+              <option value="Series Group" selected>Series Group</option>
+              <option value="Shared Universe">Shared Universe</option>
+              <option value="Duology">Duology</option>
+              <option value="Trilogy">Trilogy</option>
+              <option value="Franchise">Franchise</option>
+              <option value="Anthology">Anthology</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="f-g-desc">Description / Universe Notes <span class="optional">(optional)</span></label>
+          <textarea id="f-g-desc" rows="2" placeholder="Overall premise, chronological reading order, connection between novels…"></textarea>
+        </div>
+
+        <!-- Sub-Books Selection Section -->
+        <div class="group-books-manager">
+          <div class="group-books-manager-header">
+            <label>Sub-Books in this Group / Universe</label>
+            <span class="form-hint">Add novels, novellas, or side stories from your library</span>
+          </div>
+
+          <div class="group-add-book-row">
+            <select id="f-g-add-book-select">
+              <option value="">-- Select a title to add --</option>
+            </select>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-group-add-book">+ Add to Group</button>
+          </div>
+
+          <div class="group-items-list" id="group-items-list">
+            <div class="empty-group-items" id="empty-group-items">No books added yet. Select a title above to link it to this group.</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger-ghost btn-sm hidden" id="btn-delete-group">Delete Group</button>
+        <button class="btn btn-ghost" data-close="overlay-series-group">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-group">Save Group</button>
       </div>
     </div>
   </div>
