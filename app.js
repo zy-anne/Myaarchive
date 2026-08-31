@@ -28,6 +28,7 @@ let state = {
   filterArtists: [],
   filterPublishers: [],
   filterTranslated: [],
+  filterNsfw: [],
   allSeriesRaw: [], // unfiltered (library-scoped) series list — source for client-side filtering + facet lists
   searchQuery: '',
   graphNetwork: null,
@@ -584,6 +585,7 @@ function bindEvents() {
     state.filterArtists = [];
     state.filterPublishers = [];
     state.filterTranslated = [];
+    state.filterNsfw = [];
     el('filter-year-min').value = '';
     el('filter-year-max').value = '';
     renderMoreFilterPanel();
@@ -607,6 +609,7 @@ function bindEvents() {
     state.filterArtists = [];
     state.filterPublishers = [];
     state.filterTranslated = [];
+    state.filterNsfw = [];
     dom.search.value = '';
     el('filter-year-min').value = '';
     el('filter-year-max').value = '';
@@ -940,6 +943,11 @@ function applyClientFilters(list) {
       if (!state.filterTranslated.includes(norm)) return false;
     }
 
+    if (state.filterNsfw.length) {
+      const norm = s.is_nsfw ? 'Yes' : 'No';
+      if (!state.filterNsfw.includes(norm)) return false;
+    }
+
     return true;
   });
 }
@@ -1155,6 +1163,12 @@ function renderMoreFilterPanel() {
     updateFilterBadges();
     loadLibrary();
   });
+
+  renderFilterCheckboxList('filter-nsfw-list', ['Yes', 'No'], state.filterNsfw, (value, checked) => {
+    state.filterNsfw = checked ? [...state.filterNsfw, value] : state.filterNsfw.filter(v => v !== value);
+    updateFilterBadges();
+    loadLibrary();
+  });
 }
 
 // Fetches every title in the current library (no status/search/tag/genre
@@ -1201,8 +1215,10 @@ function renderSeriesTable() {
     tr.innerHTML = `
       <td class="col-title">
         <div class="series-title-cell">
+          ${s.is_nsfw ? `<span class="nsfw-marker" title="NSFW"></span>` : ''}
           <span class="title-text">${escapeHTML(s.title)}</span>
           ${s.kind === 'standalone' ? `<span class="kind-badge">STANDALONE</span>` : ''}
+          ${s.book_type ? `<span class="book-type-badge">${escapeHTML(s.book_type).toUpperCase()}</span>` : ''}
         </div>
       </td>
       <td class="col-author">${formatCell(s.author)}</td>
@@ -1249,6 +1265,7 @@ function renderSeriesCards() {
   grid.innerHTML = state.series.map(s => `
     <div class="series-card" data-id="${s.id}">
       <div class="series-card-cover">
+        ${s.is_nsfw ? `<span class="series-card-nsfw-badge" title="NSFW">NSFW</span>` : ''}
         ${s.cover_image_path
       ? `<img data-key="${escapeHTML(s.cover_image_path)}" alt="${escapeHTML(s.title)}">`
       : `<span class="series-card-cover-fallback">${escapeHTML((s.title || '?').charAt(0).toUpperCase())}</span>`}
@@ -1256,8 +1273,12 @@ function renderSeriesCards() {
       <div class="series-card-body">
         <div class="series-card-title">
           ${escapeHTML(s.title)}
-          ${s.kind === 'standalone' ? `<span class="kind-badge">Standalone</span>` : ''}
         </div>
+        ${(s.kind === 'standalone' || s.book_type) ? `
+        <div class="series-card-badges">
+          ${s.kind === 'standalone' ? `<span class="kind-badge">Standalone</span>` : ''}
+          ${s.book_type ? `<span class="book-type-badge">${escapeHTML(s.book_type)}</span>` : ''}
+        </div>` : ''}
         <div class="series-card-author">${escapeHTML(s.author || '')}</div>
         <div class="series-card-footer">
           <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span>
@@ -1424,6 +1445,7 @@ function renderHeroExtraDetails(s) {
   if (s.completely_translated) items.push({ label: 'Fully Translated', value: s.completely_translated });
   if (s.original_publisher) items.push({ label: 'Original Publisher', value: s.original_publisher });
   if (s.english_publisher) items.push({ label: 'English Publisher', value: s.english_publisher });
+  if (s.is_nsfw) items.push({ label: 'NSFW', value: 'Yes' });
 
   if (items.length === 0) { grid.innerHTML = ''; grid.classList.add('hidden'); return; }
   grid.classList.remove('hidden');
@@ -1497,6 +1519,7 @@ async function saveStandaloneThoughts() {
     completely_translated: s.completely_translated,
     original_publisher: s.original_publisher,
     english_publisher: s.english_publisher,
+    is_nsfw: s.is_nsfw,
   };
   await window.api.series.update(s.id, d);
   toast('Thoughts saved');
@@ -1740,7 +1763,7 @@ function updateFilterBadges() {
 
   const moreCount = state.filterBookTypes.length + state.filterLanguages.length + state.filterCountries.length
     + state.filterAuthors.length + state.filterArtists.length + state.filterPublishers.length
-    + state.filterTranslated.length + (state.filterRating > 0 ? 1 : 0)
+    + state.filterTranslated.length + state.filterNsfw.length + (state.filterRating > 0 ? 1 : 0)
     + (state.filterYearMin ? 1 : 0) + (state.filterYearMax ? 1 : 0);
   const mCount = el('more-filter-count');
   mCount.textContent = moreCount;
@@ -1900,12 +1923,14 @@ function openSeriesModal(series = null) {
   el('f-s-translated').value = series?.completely_translated || '';
   el('f-s-orig-publisher').value = series?.original_publisher || '';
   el('f-s-eng-publisher').value = series?.english_publisher || '';
+  el('f-s-nsfw').value = series?.is_nsfw ? '1' : '0';
   // Collapse back to closed each time the modal opens, unless any of these
   // fields are already filled in — then leave it open so edits are visible.
   const hasExtraDetails = state.selectedRating || series?.book_type || series?.date_started || series?.date_finished
     || series?.artist || series?.year_published || series?.original_language || series?.country_of_origin
     || (series?.language_read && series.language_read !== 'English') || series?.status_country_of_origin
-    || series?.licensed_english || series?.completely_translated || series?.original_publisher || series?.english_publisher;
+    || series?.licensed_english || series?.completely_translated || series?.original_publisher || series?.english_publisher
+    || series?.is_nsfw;
   el('series-extra-details') && (el('series-extra-details').open = !!hasExtraDetails);
 
   openModal('overlay-series');
@@ -1947,6 +1972,7 @@ async function saveSeries() {
     completely_translated: el('f-s-translated').value,
     original_publisher: el('f-s-orig-publisher').value.trim(),
     english_publisher: el('f-s-eng-publisher').value.trim(),
+    is_nsfw: el('f-s-nsfw').value === '1',
   };
   if (!d.title) return toast('Title is required', true);
 

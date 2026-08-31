@@ -29,7 +29,10 @@ function parseSeriesRow(row) {
     }
   }
   const { tag_data, genre_data, ...rest } = row;
-  return { ...rest, tags, genres };
+  // is_nsfw comes back from libSQL as 0/1 (SQLite has no native boolean) —
+  // coerce to a real boolean so callers (app.js) can just check truthiness
+  // without caring about the underlying storage representation.
+  return { ...rest, tags, genres, is_nsfw: !!rest.is_nsfw };
 }
 
 const q = (db, sql, args = []) => db.execute({ sql, args }).then(r => r.rows);
@@ -259,6 +262,7 @@ const SERIES_EXTRA_FIELDS = [
   ['completely_translated', 'TEXT'],        // 'Yes' / 'No' / '' (unknown)
   ['original_publisher', 'TEXT'],
   ['english_publisher', 'TEXT'],
+  ['is_nsfw', 'INTEGER NOT NULL DEFAULT 0'], // 0/1 — flags a title as NSFW content
 ];
 
 function seriesExtraArgs(data) {
@@ -277,6 +281,7 @@ function seriesExtraArgs(data) {
     data.completely_translated || null,
     data.original_publisher || null,
     data.english_publisher || null,
+    data.is_nsfw ? 1 : 0,
   ];
 }
 
@@ -292,8 +297,8 @@ async function seriesCreate(db, ownerId, data) {
                 title, author, status, synopsis, library_id, kind, overall_thoughts, chapter_thoughts, cover_image_path,
                 book_type, rating, original_language, country_of_origin, language_read, artist, year_published,
                 date_started, date_finished, status_country_of_origin, licensed_english, completely_translated,
-                original_publisher, english_publisher
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                original_publisher, english_publisher, is_nsfw
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         data.title, data.author || null, data.status || 'Planning', data.synopsis || null, data.library_id,
         data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
@@ -321,7 +326,7 @@ async function seriesUpdate(db, ownerId, id, data) {
     UPDATE series SET title=?, author=?, status=?, synopsis=?, kind=?, overall_thoughts=?, chapter_thoughts=?, cover_image_path=?,
       book_type=?, rating=?, original_language=?, country_of_origin=?, language_read=?, artist=?, year_published=?,
       date_started=?, date_finished=?, status_country_of_origin=?, licensed_english=?, completely_translated=?,
-      original_publisher=?, english_publisher=?
+      original_publisher=?, english_publisher=?, is_nsfw=?
     WHERE id=?
   `, [data.title, data.author || null, data.status || 'Planning', data.synopsis || null,
   data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,

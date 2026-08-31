@@ -76,6 +76,15 @@
      instead of each section inventing its own left/right padding. */
   --gutter: 40px;
 
+  /* Height of the fixed, custom window titlebar (#titlebar) that overlays
+     the top of the whole window — see the "Borderless Window Drag
+     Regions" section further down. Anything that renders near the top of
+     the window (view headers, in particular) needs to clear this, or its
+     top edge and click targets end up sitting underneath the window
+     controls. Kept as a variable so the two stay in sync if the titlebar
+     height ever changes. */
+  --titlebar-h: 42px;
+
   /* Tells the browser's own dark/light appearance (native <select>
      dropdown popups, scrollbars, etc.) which palette to use. Only the
      closed <select> box is styled by our CSS below — the open options
@@ -586,7 +595,7 @@ a:focus-visible,
 }
 
 .view-header {
-  padding: var(--sp-7) var(--gutter) var(--sp-5);
+  padding: calc(var(--titlebar-h) + var(--sp-3)) var(--gutter) var(--sp-5);
   display: flex;
   flex-wrap: wrap;
   row-gap: var(--sp-3);
@@ -1151,6 +1160,60 @@ th.col-num {
   white-space: nowrap;
 }
 
+/* Book-type pill (e.g. Manga, Web Novel, Graphic Novel) — shown next to
+   the title in both the library table and the gallery/card view.
+   Deliberately styled apart from .kind-badge (which flags STANDALONE):
+   this one carries the --accent color so it reads as descriptive
+   metadata rather than a structural flag, and stays visually distinct
+   from status/genre/tag pills elsewhere in the row/card. */
+.book-type-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* NSFW marker (library table) — a plain red dot sitting before the title
+   text. Deliberately minimal (no label) so it doesn't compete with the
+   STANDALONE / book-type pills next to it; the tooltip carries the label
+   for anyone unsure what it means. */
+.nsfw-marker {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 25%, transparent);
+  flex-shrink: 0;
+}
+
+/* NSFW marker (gallery/card cover) — a small red ribbon pinned to the
+   corner of the cover thumbnail itself, so it's visible even when
+   scanning covers rather than reading titles. */
+.series-card-nsfw-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  background: var(--danger);
+  color: #FFF;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  box-shadow: var(--shadow-sm);
+}
+
 .tag-list {
   display: flex;
   gap: 6px;
@@ -1226,6 +1289,7 @@ th.col-num {
 }
 
 .series-card-cover {
+  position: relative;
   aspect-ratio: 2 / 3;
   background: var(--surface-hover);
   border: 1px solid var(--border);
@@ -1283,6 +1347,13 @@ th.col-num {
   white-space: nowrap;
 }
 
+.series-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .series-card-footer {
   display: flex;
   justify-content: space-between;
@@ -1316,7 +1387,7 @@ th.col-num {
 }
 
 #view-series .view-header {
-  padding: var(--sp-7) var(--gutter) var(--sp-4);
+  padding: calc(var(--titlebar-h) + var(--sp-3)) var(--gutter) var(--sp-4);
   border-bottom: none;
 }
 

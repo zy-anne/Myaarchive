@@ -489,6 +489,17 @@
                 <input id="f-s-eng-publisher" type="text" placeholder="e.g. Viz Media" maxlength="200">
               </div>
             </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-nsfw">NSFW Content?</label>
+                <select id="f-s-nsfw">
+                  <option value="0">No</option>
+                  <option value="1">Yes</option>
+                </select>
+                <p class="form-hint">Flags this title with a red marker in the library and gallery views.</p>
+              </div>
+            </div>
           </div>
         </details>
       </div>
@@ -883,9 +894,15 @@
             <div class="filter-checkbox-list" id="filter-artist-list"></div>
           </div>
         </div>
-        <div class="form-group">
-          <label>Publisher</label>
-          <div class="filter-checkbox-list" id="filter-publisher-list"></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Publisher</label>
+            <div class="filter-checkbox-list" id="filter-publisher-list"></div>
+          </div>
+          <div class="form-group">
+            <label>NSFW</label>
+            <div class="filter-checkbox-list" id="filter-nsfw-list"></div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
