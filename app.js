@@ -34,6 +34,9 @@ let state = {
   allSeriesRaw: [], // unfiltered (library-scoped) series list — source for client-side filtering + facet lists
   searchQuery: '',
   graphNetwork: null,
+  seriesGroups: [],  // umbrella groups/shared universes for the current library
+  editingGroup: null,
+  groupItems: [],    // working item list (series_id/title/group_role) while the group modal is open
   libraries: [],
   currentLibraryId: null,
   editingLibrary: null,
@@ -99,6 +102,10 @@ const dom = {
   warningInput: el('f-s-warnings'),
   warningDropdown: el('warning-dropdown'),
   warningChips: el('warning-chips'),
+
+  groupsSection: el('series-groups-section'),
+  groupsList: el('series-groups-list'),
+  groupsCount: el('groups-count'),
 
   sidebarNavList: el('sidebar-nav-list'),
   libraryTitle: el('library-title'),
@@ -781,6 +788,13 @@ function bindEvents() {
       showLibrary();
     });
   });
+
+  // Series Groups (umbrella cards + modal)
+  el('btn-add-series-group').addEventListener('click', () => openGroupModal(null));
+  el('btn-section-add-group').addEventListener('click', () => openGroupModal(null));
+  el('btn-save-group').addEventListener('click', saveGroup);
+  el('btn-delete-group').addEventListener('click', deleteGroup);
+  el('btn-group-add-book').addEventListener('click', addBookToGroup);
   el('btn-save-series').addEventListener('click', saveSeries);
 
   // Transfer / Copy Modal Actions
@@ -1372,6 +1386,7 @@ async function loadLibrary() {
   updateSortHeaderUI();
   updateSortControlUI();
   applySeriesViewMode();
+  await loadSeriesGroups();
 }
 
 function renderSeriesTable() {
@@ -1493,6 +1508,218 @@ async function setSeriesViewMode(mode) {
 function showLibrary() {
   switchView('view-library');
   loadLibrary();
+}
+
+// ─── Series Groups (Umbrella Groups / Shared Universes) ─────────────────────
+// The markup and CSS for this (collapsible umbrella cards on the library
+// page, plus the group modal) already existed — this is the missing JS
+// that actually drives it. Groups are library-scoped, so they're reloaded
+// alongside the series list itself in loadLibrary() rather than once at
+// startup.
+
+const GROUP_ROLES = ['Main Story', 'Side Story', 'Prequel', 'Sequel', 'Spin-off', 'Companion', 'Short Story', 'Novella'];
+
+async function loadSeriesGroups() {
+  state.seriesGroups = await window.api.seriesGroups.getAll(state.currentLibraryId);
+  renderSeriesGroupsSection();
+}
+
+// Renders the collapsible umbrella cards above the library table/grid.
+// Hidden entirely when the current library has no groups, so it doesn't
+// take up space for the common case of a library that isn't using this
+// feature.
+function renderSeriesGroupsSection() {
+  const hasGroups = state.seriesGroups.length > 0;
+  dom.groupsSection.classList.toggle('hidden', !hasGroups);
+  if (!hasGroups) {
+    dom.groupsList.innerHTML = '';
+    return;
+  }
+
+  dom.groupsCount.textContent = `${state.seriesGroups.length} ${state.seriesGroups.length === 1 ? 'group' : 'groups'}`;
+
+  dom.groupsList.innerHTML = state.seriesGroups.map(g => `
+    <div class="umbrella-group-card" data-id="${g.id}">
+      <div class="umbrella-group-header">
+        <div class="umbrella-group-left">
+          <span class="umbrella-chevron">▸</span>
+          <span class="umbrella-group-title">${escapeHTML(g.name)}</span>
+          <span class="umbrella-type-badge">${escapeHTML(g.group_type || 'Series Group')}</span>
+        </div>
+        <div class="umbrella-group-actions">
+          <button type="button" class="btn btn-ghost btn-sm group-edit-btn" data-id="${g.id}">Edit</button>
+        </div>
+      </div>
+      <div class="umbrella-group-body">
+        ${g.description ? `<div class="umbrella-group-desc">${escapeHTML(g.description)}</div>` : ''}
+        <div class="sub-books-grid">
+          ${g.items.map(item => `
+            <div class="sub-book-card">
+              <div class="sub-book-cover" ${item.cover_image_path ? `data-key="${escapeHTML(item.cover_image_path)}"` : ''}>
+                ${item.cover_image_path ? '' : escapeHTML((item.title || '?').charAt(0).toUpperCase())}
+              </div>
+              <div class="sub-book-info">
+                <span class="sub-book-role-badge">${escapeHTML((item.group_role || 'Main Story').toUpperCase())}</span>
+                <span class="sub-book-title">${escapeHTML(item.title)}</span>
+                <div class="sub-book-meta">
+                  <span class="status-badge" style="color:${statusColor(item.status)}">${escapeHTML(item.status)}</span>
+                  ${item.kind === 'standalone' ? '' : `<span>${item.volume_count || 0} vol</span>`}
+                </div>
+                ${item.rating ? `<span class="sub-book-rating">${'★'.repeat(item.rating)}</span>` : ''}
+                <button type="button" class="btn-deep-dive" data-id="${item.id}">Deep Dive →</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // .sub-book-cover is a background-image div, not an <img data-key>, so
+  // fillCoverImages() (which only targets img[data-key]) won't reach it —
+  // fetch and apply these directly instead.
+  dom.groupsList.querySelectorAll('.sub-book-cover[data-key]').forEach(async (cover) => {
+    const dataUrl = await window.api.files.getImageData(cover.dataset.key);
+    if (dataUrl) {
+      cover.style.backgroundImage = `url('${dataUrl}')`;
+      cover.textContent = '';
+    }
+  });
+
+  dom.groupsList.querySelectorAll('.umbrella-group-header').forEach(header => {
+    header.addEventListener('click', (e) => {
+      if (e.target.closest('.group-edit-btn')) return;
+      header.closest('.umbrella-group-card').classList.toggle('open');
+    });
+  });
+  dom.groupsList.querySelectorAll('.group-edit-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const group = state.seriesGroups.find(g => g.id === parseInt(btn.dataset.id));
+      if (group) openGroupModal(group);
+    });
+  });
+  dom.groupsList.querySelectorAll('.btn-deep-dive').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openSeriesDetail(parseInt(btn.dataset.id));
+    });
+  });
+}
+
+// Populates the "add a title to this group" dropdown from the current
+// library's titles, excluding whatever's already sitting in
+// state.groupItems — so the same title can't be added twice and the list
+// shrinks as items are added.
+function populateGroupAddBookSelect() {
+  const select = el('f-g-add-book-select');
+  const usedIds = new Set(state.groupItems.map(i => i.series_id));
+  const available = state.allSeriesRaw.filter(s => !usedIds.has(s.id));
+  select.innerHTML = `<option value="">-- Select a title to add --</option>` +
+    available.map(s => `<option value="${s.id}">${escapeHTML(s.title)}</option>`).join('');
+}
+
+// Renders the working item list inside the group modal (title + role
+// picker + remove button per row). Operates on state.groupItems directly
+// so edits (role changes, removals) are reflected immediately without a
+// round trip — the whole list is only sent to the backend on Save.
+function renderGroupItemsList() {
+  const list = el('group-items-list');
+  const empty = el('empty-group-items');
+  list.querySelectorAll('.group-item-row').forEach(r => r.remove());
+
+  if (state.groupItems.length === 0) {
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+
+  state.groupItems.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'group-item-row';
+    row.dataset.seriesId = item.series_id;
+    row.innerHTML = `
+      <span class="group-item-title">${escapeHTML(item.title)}</span>
+      <select class="group-item-role-input">
+        ${GROUP_ROLES.map(r => `<option value="${escapeHTML(r)}" ${r === item.group_role ? 'selected' : ''}>${escapeHTML(r)}</option>`).join('')}
+      </select>
+      <button type="button" class="group-item-remove-btn" title="Remove from group">✕</button>
+    `;
+    row.querySelector('.group-item-role-input').addEventListener('change', (e) => {
+      item.group_role = e.target.value;
+    });
+    row.querySelector('.group-item-remove-btn').addEventListener('click', () => {
+      state.groupItems = state.groupItems.filter(i => i.series_id !== item.series_id);
+      renderGroupItemsList();
+      populateGroupAddBookSelect();
+    });
+    list.appendChild(row);
+  });
+}
+
+function addBookToGroup() {
+  const select = el('f-g-add-book-select');
+  const seriesId = parseInt(select.value);
+  if (!seriesId) return;
+  const series = state.allSeriesRaw.find(s => s.id === seriesId);
+  if (!series) return;
+  state.groupItems.push({ series_id: seriesId, title: series.title, group_role: 'Main Story' });
+  renderGroupItemsList();
+  populateGroupAddBookSelect();
+}
+
+function openGroupModal(group = null) {
+  state.editingGroup = group;
+  el('modal-group-title').textContent = group ? 'Edit Series Group / Universe' : 'New Series Group / Universe';
+  el('f-g-name').value = group?.name || '';
+  el('f-g-type').value = group?.group_type || 'Series Group';
+  el('f-g-desc').value = group?.description || '';
+
+  state.groupItems = group
+    ? group.items.map(i => ({ series_id: i.id, title: i.title, group_role: i.group_role || 'Main Story' }))
+    : [];
+  renderGroupItemsList();
+  populateGroupAddBookSelect();
+
+  el('btn-delete-group').classList.toggle('hidden', !group);
+  openModal('overlay-series-group');
+  el('f-g-name').focus();
+}
+
+async function saveGroup() {
+  const name = el('f-g-name').value.trim();
+  if (!name) return toast('Group name is required', true);
+
+  const d = {
+    library_id: state.currentLibraryId,
+    name,
+    group_type: el('f-g-type').value,
+    description: el('f-g-desc').value.trim(),
+    items: state.groupItems.map((item, i) => ({ series_id: item.series_id, group_role: item.group_role, position: i })),
+  };
+
+  if (state.editingGroup) {
+    await window.api.seriesGroups.update(state.editingGroup.id, d);
+    toast('Group updated');
+  } else {
+    await window.api.seriesGroups.create(d);
+    toast('Group added');
+  }
+  state.editingGroup = null;
+  closeModal('overlay-series-group');
+  await loadSeriesGroups();
+}
+
+function deleteGroup() {
+  const group = state.editingGroup;
+  if (!group) return;
+  confirmDelete(`Delete "${group.name}"? This won't delete the titles in it, just the group.`, async () => {
+    await window.api.seriesGroups.delete(group.id);
+    toast('Group deleted');
+    closeModal('overlay-series-group');
+    state.editingGroup = null;
+    await loadSeriesGroups();
+  });
 }
 
 // ─── Series Detail ────────────────────────────────────────────────────────────

@@ -386,6 +386,9 @@ async function seriesUpdate(db, ownerId, id, data) {
   if (data.tags !== undefined) await upsertSeriesTags(db, ownerId, id, data.tags);
   if (data.genres !== undefined) await upsertSeriesGenres(db, id, data.genres);
   if (data.content_warnings !== undefined) await upsertSeriesContentWarnings(db, ownerId, id, data.content_warnings);
+  if (Number(targetLibraryId) !== Number(existing.library_id)) {
+    await detachSeriesFromGroups(db, id, targetLibraryId);
+  }
   return true;
 }
 
@@ -396,6 +399,7 @@ async function seriesTransfer(db, ownerId, id, targetLibraryId) {
   if (!targetLib) throw new Error('Target category not found for this user');
 
   await run(db, `UPDATE series SET library_id = ? WHERE id = ?`, [targetLibraryId, id]);
+  await detachSeriesFromGroups(db, id, targetLibraryId);
   return true;
 }
 
@@ -525,6 +529,7 @@ async function seriesCopy(db, ownerId, id, targetLibraryId, options = {}) {
 async function seriesDelete(db, ownerId, id) {
   const existing = await seriesGet(db, ownerId, id);
   if (!existing) throw new Error('Series not found for this user');
+  await detachSeriesFromGroups(db, id);
   await run(db, `DELETE FROM series WHERE id = ?`, [id]);
   return true;
 }
@@ -1071,7 +1076,7 @@ async function ensureCoreSchema(db) {
 async function seriesGroupsGetAll(db, ownerId, libraryId) {
   let where = 'WHERE g.library_id IN (SELECT id FROM libraries WHERE owner_id = ?)';
   const args = [ownerId];
-  if (libraryId) {
+  if (libraryId != null && libraryId !== '') {
     where += ' AND g.library_id = ?';
     args.push(libraryId);
   }
@@ -1099,6 +1104,7 @@ async function seriesGroupsGetAll(db, ownerId, libraryId) {
     `, [group.id]);
     group.items = items.map(item => ({
       ...item,
+      id: Number(item.id),
       is_nsfw: !!item.is_nsfw,
     }));
   }
@@ -1127,6 +1133,7 @@ async function seriesGroupsGet(db, ownerId, id) {
   `, [id]);
   group.items = items.map(item => ({
     ...item,
+    id: Number(item.id),
     is_nsfw: !!item.is_nsfw,
   }));
   return group;
@@ -1142,22 +1149,13 @@ async function seriesGroupsCreate(db, ownerId, d) {
   `, [d.library_id, d.name, d.group_type || 'Series Group', d.description || null, d.cover_image_path || null]);
   const groupId = Number(r.lastInsertRowid);
 
-  if (Array.isArray(d.items)) {
-    for (let i = 0; i < d.items.length; i++) {
-      const item = d.items[i];
-      await run(db, `
-        INSERT OR IGNORE INTO series_group_items (group_id, series_id, group_role, position)
-        VALUES (?, ?, ?, ?)
-      `, [groupId, item.series_id, item.group_role || 'Main Story', item.position !== undefined ? item.position : i]);
-    }
-  }
-
+  await replaceSeriesGroupItems(db, groupId, d.library_id, d.items);
   return groupId;
 }
 
 async function seriesGroupsUpdate(db, ownerId, id, d) {
   const existing = await one(db, `
-    SELECT id FROM series_groups WHERE id = ? AND library_id IN (SELECT id FROM libraries WHERE owner_id = ?)
+    SELECT id, library_id FROM series_groups WHERE id = ? AND library_id IN (SELECT id FROM libraries WHERE owner_id = ?)
   `, [id, ownerId]);
   if (!existing) throw new Error('Series group not found for this user');
 
@@ -1166,16 +1164,37 @@ async function seriesGroupsUpdate(db, ownerId, id, d) {
   `, [d.name, d.group_type || 'Series Group', d.description || null, d.cover_image_path || null, id]);
 
   if (Array.isArray(d.items)) {
-    await run(db, `DELETE FROM series_group_items WHERE group_id = ?`, [id]);
-    for (let i = 0; i < d.items.length; i++) {
-      const item = d.items[i];
-      await run(db, `
-        INSERT OR IGNORE INTO series_group_items (group_id, series_id, group_role, position)
-        VALUES (?, ?, ?, ?)
-      `, [id, item.series_id, item.group_role || 'Main Story', item.position !== undefined ? item.position : i]);
-    }
+    await replaceSeriesGroupItems(db, id, existing.library_id, d.items);
   }
   return true;
+}
+
+async function replaceSeriesGroupItems(db, groupId, libraryId, items) {
+  await run(db, `DELETE FROM series_group_items WHERE group_id = ?`, [groupId]);
+  if (!Array.isArray(items)) return;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const seriesId = Number(item.series_id);
+    if (!seriesId) continue;
+    const series = await one(db, `SELECT id FROM series WHERE id = ? AND library_id = ?`, [seriesId, libraryId]);
+    if (!series) continue;
+    await run(db, `
+      INSERT OR IGNORE INTO series_group_items (group_id, series_id, group_role, position)
+      VALUES (?, ?, ?, ?)
+    `, [groupId, seriesId, item.group_role || 'Main Story', item.position !== undefined ? item.position : i]);
+  }
+}
+
+async function detachSeriesFromGroups(db, seriesId, keepLibraryId = null) {
+  if (keepLibraryId != null) {
+    await run(db, `
+      DELETE FROM series_group_items
+      WHERE series_id = ?
+        AND group_id IN (SELECT id FROM series_groups WHERE library_id != ?)
+    `, [seriesId, keepLibraryId]);
+    return;
+  }
+  await run(db, `DELETE FROM series_group_items WHERE series_id = ?`, [seriesId]);
 }
 
 async function seriesGroupsDelete(db, ownerId, id) {
