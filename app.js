@@ -12,6 +12,8 @@ let state = {
   selectedTags: [],
   allGenres: [],
   selectedGenres: [],
+  allWarnings: [],
+  selectedWarnings: [],
   selectedRating: 0,
   allStatuses: [],
   filterStatus: 'All',
@@ -92,6 +94,11 @@ const dom = {
   tagInput: el('f-s-tags'),
   tagDropdown: el('tag-dropdown'),
   tagChips: el('tag-chips'),
+
+  warningWrap: el('warning-input-wrap'),
+  warningInput: el('f-s-warnings'),
+  warningDropdown: el('warning-dropdown'),
+  warningChips: el('warning-chips'),
 
   sidebarNavList: el('sidebar-nav-list'),
   libraryTitle: el('library-title'),
@@ -407,6 +414,7 @@ async function init() {
   await loadLibraries();
   await loadTags();
   await loadGenres();
+  await loadContentWarnings();
   await loadStatuses();
   renderStatusFilterButtons();
   await loadLibrary();
@@ -829,6 +837,15 @@ function bindEvents() {
   dom.tagInput.addEventListener('keydown', handleTagKeydown);
   document.addEventListener('click', (e) => {
     if (!dom.tagWrap.contains(e.target)) dom.tagDropdown.classList.add('hidden');
+  });
+
+  // Content Warnings Input (mirrors the Tags input above, but backed by
+  // its own per-user vocabulary — see loadContentWarnings/addWarning)
+  dom.warningWrap.addEventListener('click', () => dom.warningInput.focus());
+  dom.warningInput.addEventListener('input', handleWarningInput);
+  dom.warningInput.addEventListener('keydown', handleWarningKeydown);
+  document.addEventListener('click', (e) => {
+    if (!dom.warningWrap.contains(e.target)) dom.warningDropdown.classList.add('hidden');
   });
 
   // Tabs
@@ -1563,6 +1580,14 @@ function renderSeriesHero(s) {
         </div>
       </div>
     ` : ''}
+    ${s.content_warnings && s.content_warnings.length ? `
+      <div class="hero-field">
+        <span class="hero-field-label">Content Warnings</span>
+        <div class="tag-list">
+          ${s.content_warnings.map(w => `<span class="warning-pill">${escapeHTML(w.name)}</span>`).join('')}
+        </div>
+      </div>
+    ` : ''}
     ${s.synopsis ? `<div class="hero-synopsis">${nl2br(s.synopsis)}</div>` : ''}
   `;
   const coverWrap = dom.heroTop.querySelector('.hero-cover-wrap');
@@ -1694,6 +1719,10 @@ async function loadTags() {
 
 async function loadGenres() {
   state.allGenres = await window.api.genres.getAll();
+}
+
+async function loadContentWarnings() {
+  state.allWarnings = await window.api.contentWarnings.getAll();
 }
 
 // ─── Statuses (customizable) ────────────────────────────────────────────
@@ -2026,6 +2055,71 @@ function addTag(name) {
   renderTagChips();
 }
 
+// ─── Content Warnings (series form) ────────────────────────────────────────
+// Mirrors the Tags input above exactly (chip list + autocomplete dropdown
+// + Enter-to-add), just backed by state.allWarnings/state.selectedWarnings
+// and the contentWarnings IPC channel instead of tags. Kept as a separate
+// set of functions rather than generalizing the tag helpers, since the two
+// already diverge in styling (warnings always render as a fixed danger-red
+// pill — see .warning-chip/.warning-pill in style.css — rather than tags'
+// per-name palette color).
+
+const MAX_WARNING_LENGTH = 60;
+
+function renderWarningChips() {
+  dom.warningChips.innerHTML = state.selectedWarnings.map(w => `
+    <div class="tag-chip warning-chip">
+      ${escapeHTML(w.name)}
+      <span class="tag-chip-remove" data-name="${escapeHTML(w.name)}">✕</span>
+    </div>
+  `).join('');
+  dom.warningChips.querySelectorAll('.tag-chip-remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const name = e.target.dataset.name;
+      state.selectedWarnings = state.selectedWarnings.filter(w => w.name !== name);
+      renderWarningChips();
+    });
+  });
+}
+
+function handleWarningInput(e) {
+  const val = e.target.value.toLowerCase().trim();
+  if (!val) { dom.warningDropdown.classList.add('hidden'); return; }
+
+  const matches = state.allWarnings.filter(w => w.name.toLowerCase().includes(val)
+    && !state.selectedWarnings.some(sw => sw.name === w.name));
+
+  if (matches.length > 0) {
+    dom.warningDropdown.innerHTML = matches.map(w => `<div class="tag-option">${escapeHTML(w.name)}</div>`).join('');
+    dom.warningDropdown.querySelectorAll('.tag-option').forEach(opt => {
+      opt.addEventListener('click', () => {
+        addWarning(opt.textContent);
+      });
+    });
+    dom.warningDropdown.classList.remove('hidden');
+  } else {
+    dom.warningDropdown.classList.add('hidden');
+  }
+}
+
+function handleWarningKeydown(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const val = e.target.value.trim();
+    if (val) addWarning(val);
+  }
+}
+
+function addWarning(name) {
+  const trimmed = name.slice(0, MAX_WARNING_LENGTH);
+  if (!state.selectedWarnings.some(w => w.name.toLowerCase() === trimmed.toLowerCase())) {
+    state.selectedWarnings.push({ name: trimmed });
+  }
+  dom.warningInput.value = '';
+  dom.warningDropdown.classList.add('hidden');
+  renderWarningChips();
+}
+
 function openSeriesModal(series = null) {
   el('modal-series-title').textContent = series
     ? (series.kind === 'standalone' ? 'Edit Standalone Title' : 'Edit Title')
@@ -2062,6 +2156,10 @@ function openSeriesModal(series = null) {
 
   state.selectedGenres = series ? series.genres.map(g => g.name) : [];
   renderGenreSwatches();
+
+  state.selectedWarnings = series ? [...series.content_warnings] : [];
+  renderWarningChips();
+  dom.warningInput.value = '';
 
   // Additional details (all optional)
   state.selectedRating = series?.rating || 0;
@@ -2116,6 +2214,7 @@ async function saveSeries() {
     synopsis: el('f-s-synopsis').value.trim(),
     tags: state.selectedTags.map(t => t.name),
     genres: state.selectedGenres,
+    content_warnings: state.selectedWarnings.map(w => w.name),
     library_id: selectedLibId,
     kind: state.currentSeries && el('modal-series-title').textContent.includes('Edit')
       ? state.currentSeries.kind
@@ -2173,6 +2272,7 @@ async function saveSeries() {
   }
   loadTags();
   loadGenres();
+  loadContentWarnings();
   if (el('view-library').classList.contains('active')) loadLibrary();
 }
 

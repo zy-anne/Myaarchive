@@ -1229,6 +1229,24 @@ th.col-num {
   opacity: 0.9;
 }
 
+/* Content-warning pill (read-only, series Details tab) — always a fixed
+   danger-red, unlike tag pills (which get an arbitrary per-name color),
+   so severity reads consistently at a glance regardless of which warning
+   it is. Deliberately visually distinct from .tag-pill (solid tinted
+   background rather than just an outline) so warnings don't get lost
+   among genre/tag pills on a busy Details tab. */
+.warning-pill {
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .empty-dim {
   color: var(--text-muted);
   opacity: 0.6;
@@ -2234,6 +2252,15 @@ select option:focus {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
 }
 
+/* Content-warnings input — same shape as the tags input above, but the
+   focus ring goes danger-red instead of primary so the field itself
+   signals "this one's a warning list" even before you look at the chips
+   inside it. */
+.warning-input-wrap:focus-within {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
 .tag-chips {
   display: flex;
   flex-wrap: wrap;
@@ -2250,6 +2277,14 @@ select option:focus {
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
+}
+
+/* Content-warning chip (series form, while editing) — same shape as a tag
+   chip, recolored to danger-red so it matches .warning-pill's read-only
+   display on the Details tab. */
+.warning-chip {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .tag-chip-remove {
@@ -2269,6 +2304,21 @@ select option:focus {
 }
 
 #f-s-tags:focus {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
+#f-s-warnings {
+  flex: 1;
+  min-width: 120px;
+  background: transparent;
+  border: none;
+  padding: 4px;
+  font-family: var(--font-ui);
+}
+
+#f-s-warnings:focus {
   border: none;
   outline: none;
   box-shadow: none;

@@ -297,9 +297,11 @@ handle('libraries:create', (_, d) => dataLayer.libraries.create(db, requireUser(
 handle('libraries:update', (_, id, d) => dataLayer.libraries.update(db, id, d));
 handle('libraries:delete', (_, id) => dataLayer.libraries.delete(db, id));
 
-// ─── IPC: Tags (per-user) / Genres (shared) ───────────────────────────────
+// ─── IPC: Tags (per-user) / Genres (shared) / Content Warnings (per-user) ──
 handle('tags:getAll', () => dataLayer.tags.getAll(db, requireUser()));
 handle('tags:create', (_, name) => dataLayer.tags.create(db, requireUser(), name));
+handle('contentWarnings:getAll', () => dataLayer.contentWarnings.getAll(db, requireUser()));
+handle('contentWarnings:create', (_, name) => dataLayer.contentWarnings.create(db, requireUser(), name));
 handle('genres:getAll', () => dataLayer.genres.getAll(db));
 
 // ─── IPC: Statuses (per-user, customizable) ────────────────────────────────

@@ -63,6 +63,10 @@ contextBridge.exposeInMainWorld('api', {
   genres: {
     getAll: () => invoke('genres:getAll'),
   },
+  contentWarnings: {
+    getAll: () => invoke('contentWarnings:getAll'),
+    create: (n) => invoke('contentWarnings:create', n),
+  },
   statuses: {
     getAll: () => invoke('statuses:getAll'),
     create: (d) => invoke('statuses:create', d),

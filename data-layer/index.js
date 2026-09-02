@@ -28,11 +28,19 @@ function parseSeriesRow(row) {
       if (id && name) genres.push({ id: parseInt(id), name, color: color || '#b2bec3' });
     }
   }
-  const { tag_data, genre_data, ...rest } = row;
+  const content_warnings = [];
+  if (row.warning_data) {
+    for (const entry of row.warning_data.split('||')) {
+      if (!entry) continue;
+      const [id, name] = entry.split('::');
+      if (id && name) content_warnings.push({ id: parseInt(id), name });
+    }
+  }
+  const { tag_data, genre_data, warning_data, ...rest } = row;
   // is_nsfw comes back from libSQL as 0/1 (SQLite has no native boolean) —
   // coerce to a real boolean so callers (app.js) can just check truthiness
   // without caring about the underlying storage representation.
-  return { ...rest, tags, genres, is_nsfw: !!rest.is_nsfw };
+  return { ...rest, tags, genres, content_warnings, is_nsfw: !!rest.is_nsfw };
 }
 
 const q = (db, sql, args = []) => db.execute({ sql, args }).then(r => r.rows);
@@ -129,6 +137,23 @@ async function genresGetAll(db) {
   return q(db, `SELECT * FROM genres ORDER BY name COLLATE NOCASE`);
 }
 
+// ─── Content Warnings (per-user) ───────────────────────────────────────
+// Deliberately simpler than tags: no color picker, no palette assignment.
+// Warnings are always rendered with a fixed danger-red pill (see
+// .warning-pill / .warning-chip in style.css) so severity reads
+// consistently regardless of which warning it is, rather than each one
+// getting an arbitrary color the way tags do.
+
+async function contentWarningsGetAll(db, ownerId) {
+  return q(db, `SELECT * FROM content_warnings WHERE owner_id = ? ORDER BY name COLLATE NOCASE`, [ownerId]);
+}
+
+async function contentWarningsCreate(db, ownerId, name) {
+  const trimmed = name.trim();
+  await run(db, `INSERT OR IGNORE INTO content_warnings (owner_id, name) VALUES (?, ?)`, [ownerId, trimmed]);
+  return one(db, `SELECT * FROM content_warnings WHERE owner_id = ? AND name = ?`, [ownerId, trimmed]);
+}
+
 // ─── Settings (per-user) ───────────────────────────────────────────────
 
 async function settingsGetAll(db, ownerId) {
@@ -171,6 +196,21 @@ async function upsertSeriesGenres(db, seriesId, genreNames) {
   }
 }
 
+// Content warnings are owner-scoped, same as tags — upserting a series's
+// warnings needs to know which user's warning vocabulary to look in /
+// create into, so one account's "Body Horror" isn't silently reused (or
+// collided with) another account's.
+async function upsertSeriesContentWarnings(db, ownerId, seriesId, warnings) {
+  await run(db, `DELETE FROM series_content_warnings WHERE series_id = ?`, [seriesId]);
+  for (const name of warnings) {
+    const w = name.trim();
+    if (!w) continue;
+    await run(db, `INSERT OR IGNORE INTO content_warnings (owner_id, name) VALUES (?, ?)`, [ownerId, w]);
+    const warning = await one(db, `SELECT id FROM content_warnings WHERE owner_id = ? AND name = ?`, [ownerId, w]);
+    if (warning) await run(db, `INSERT OR IGNORE INTO series_content_warnings (series_id, warning_id) VALUES (?, ?)`, [seriesId, warning.id]);
+  }
+}
+
 const SERIES_SELECT = `
   SELECT s.*,
     (SELECT GROUP_CONCAT(t.id || '::' || t.name || '::' || t.color, '||')
@@ -179,6 +219,9 @@ const SERIES_SELECT = `
     (SELECT GROUP_CONCAT(g.id || '::' || g.name || '::' || g.color, '||')
        FROM series_genres sg JOIN genres g ON sg.genre_id = g.id
        WHERE sg.series_id = s.id) as genre_data,
+    (SELECT GROUP_CONCAT(cw.id || '::' || cw.name, '||')
+       FROM series_content_warnings scw JOIN content_warnings cw ON scw.warning_id = cw.id
+       WHERE scw.series_id = s.id) as warning_data,
     (SELECT COUNT(*) FROM volumes v WHERE v.series_id = s.id) as volume_count,
     (SELECT COUNT(*) FROM characters c WHERE c.series_id = s.id) as character_count
   FROM series s
@@ -307,10 +350,11 @@ async function seriesCreate(db, ownerId, data) {
     });
     const seriesId = Number(r.lastInsertRowid);
     await tx.commit();
-    // Tag/genre upserts run outside the transaction (they're idempotent
-    // OR IGNORE upserts, and libSQL transactions don't nest).
+    // Tag/genre/warning upserts run outside the transaction (they're
+    // idempotent OR IGNORE upserts, and libSQL transactions don't nest).
     await upsertSeriesTags(db, ownerId, seriesId, data.tags || []);
     await upsertSeriesGenres(db, seriesId, data.genres || []);
+    await upsertSeriesContentWarnings(db, ownerId, seriesId, data.content_warnings || []);
     return seriesId;
   } catch (err) {
     await tx.rollback();
@@ -337,10 +381,11 @@ async function seriesUpdate(db, ownerId, id, data) {
   `, [data.title, data.author || null, data.status || 'Planning', data.synopsis || null,
   data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
   ...seriesExtraArgs(data),
-  targetLibraryId,
+    targetLibraryId,
     id]);
   if (data.tags !== undefined) await upsertSeriesTags(db, ownerId, id, data.tags);
   if (data.genres !== undefined) await upsertSeriesGenres(db, id, data.genres);
+  if (data.content_warnings !== undefined) await upsertSeriesContentWarnings(db, ownerId, id, data.content_warnings);
   return true;
 }
 
@@ -387,6 +432,7 @@ async function seriesCopy(db, ownerId, id, targetLibraryId, options = {}) {
     is_nsfw: existing.is_nsfw ? 1 : 0,
     tags: existing.tags.map(t => t.name),
     genres: existing.genres.map(g => g.name),
+    content_warnings: existing.content_warnings.map(w => w.name),
   };
 
   const newSeriesId = await seriesCreate(db, ownerId, copyData);
@@ -518,7 +564,7 @@ async function charactersCreate(db, d) {
                             status_role, overall_vibes, appears_vs_reality, personality)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [d.series_id, d.name, d.role || 'Side', d.volume_appearances || null, d.notes || null, d.profile_image_path || null,
-      d.status_role || null, d.overall_vibes || null, d.appears_vs_reality || null, d.personality || null]);
+  d.status_role || null, d.overall_vibes || null, d.appears_vs_reality || null, d.personality || null]);
   return Number(r.lastInsertRowid);
 }
 async function charactersUpdate(db, id, d) {
@@ -527,7 +573,7 @@ async function charactersUpdate(db, id, d) {
       status_role=?, overall_vibes=?, appears_vs_reality=?, personality=?
     WHERE id=?
   `, [d.name, d.role || 'Side', d.volume_appearances || null, d.notes || null, d.profile_image_path || null,
-      d.status_role || null, d.overall_vibes || null, d.appears_vs_reality || null, d.personality || null, id]);
+  d.status_role || null, d.overall_vibes || null, d.appears_vs_reality || null, d.personality || null, id]);
   return true;
 }
 async function charactersDelete(db, id) { await run(db, `DELETE FROM characters WHERE id = ?`, [id]); return true; }
@@ -964,6 +1010,21 @@ async function ensureCoreSchema(db) {
     )
   `);
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS content_warnings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      owner_id TEXT NOT NULL,
+      name TEXT NOT NULL COLLATE NOCASE,
+      UNIQUE(owner_id, name)
+    )
+  `);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS series_content_warnings (
+      series_id INTEGER NOT NULL,
+      warning_id INTEGER NOT NULL,
+      UNIQUE(series_id, warning_id)
+    )
+  `);
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS gallery_images (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       series_id INTEGER NOT NULL,
@@ -1187,6 +1248,7 @@ module.exports = {
   libraries: { getAll: librariesGetAll, create: librariesCreate, update: librariesUpdate, delete: librariesDelete },
   tags: { getAll: tagsGetAll, create: tagsCreate },
   genres: { getAll: genresGetAll },
+  contentWarnings: { getAll: contentWarningsGetAll, create: contentWarningsCreate },
   statuses: { getAll: statusesGetAll, create: statusesCreate, update: statusesUpdate, delete: statusesDelete },
   settings: { getAll: settingsGetAll, set: settingsSet },
   series: {
