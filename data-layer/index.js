@@ -1254,6 +1254,123 @@ async function ensureCharacterExtraColumns(db) {
   } catch { /* no characters table yet — nothing to migrate */ }
 }
 
+// ─── Account Deletion (Danger Zone) ────────────────────────────────────
+// Cascade-deletes every row owned by a single user across the whole
+// schema, then removes the user row itself. There are no SQLite foreign
+// keys enforcing cascade here (same as seriesDelete/librariesDelete
+// elsewhere in this file), so every child table has to be cleared
+// explicitly and in the right order (children before parents).
+//
+// R2 objects (cover images, portraits, gallery pictures, file
+// attachments, custom nav icons) can't be deleted from here — this module
+// has no storage/r2.js access — so every R2 key touched by this account is
+// collected and returned as `r2Keys` for the caller (main.js, which does
+// have the R2 client) to delete afterward. If that second step fails
+// partway through, the DB-side deletion has still fully succeeded; the
+// worst case is a handful of orphaned objects left in the shared bucket,
+// not an inconsistent account.
+async function accountDelete(db, ownerId) {
+  const r2Keys = [];
+  const addKey = (k) => { if (k) r2Keys.push(k); };
+
+  const libraries = await q(db, `SELECT id, icon_image FROM libraries WHERE owner_id = ?`, [ownerId]);
+  libraries.forEach(l => addKey(l.icon_image));
+  const libraryIds = libraries.map(l => l.id);
+
+  let seriesIds = [];
+  let groupIds = [];
+  if (libraryIds.length > 0) {
+    const lph = libraryIds.map(() => '?').join(',');
+
+    const seriesRows = await q(db, `SELECT id, cover_image_path FROM series WHERE library_id IN (${lph})`, libraryIds);
+    seriesRows.forEach(s => addKey(s.cover_image_path));
+    seriesIds = seriesRows.map(s => s.id);
+
+    const groupRows = await q(db, `SELECT id, cover_image_path FROM series_groups WHERE library_id IN (${lph})`, libraryIds);
+    groupRows.forEach(g => addKey(g.cover_image_path));
+    groupIds = groupRows.map(g => g.id);
+
+    let characterIds = [];
+    if (seriesIds.length > 0) {
+      const sph = seriesIds.map(() => '?').join(',');
+
+      const volumeRows = await q(db, `SELECT cover_image_path FROM volumes WHERE series_id IN (${sph})`, seriesIds);
+      volumeRows.forEach(v => addKey(v.cover_image_path));
+
+      const characterRows = await q(db, `SELECT id, profile_image_path FROM characters WHERE series_id IN (${sph})`, seriesIds);
+      characterRows.forEach(c => addKey(c.profile_image_path));
+      characterIds = characterRows.map(c => c.id);
+
+      const galleryRows = await q(db, `SELECT image_path FROM gallery_images WHERE series_id IN (${sph})`, seriesIds);
+      galleryRows.forEach(g => addKey(g.image_path));
+
+      const attachmentRows = await q(db, `SELECT file_path FROM attachments WHERE series_id IN (${sph})`, seriesIds);
+      attachmentRows.forEach(a => addKey(a.file_path));
+    }
+
+    // All the actual row deletions happen in one write transaction —
+    // either the whole account's data goes, or (on any failure) none of
+    // it does, rather than leaving a half-deleted account behind.
+    const tx = await db.transaction('write');
+    try {
+      if (characterIds.length > 0) {
+        const cph = characterIds.map(() => '?').join(',');
+        await tx.execute({
+          sql: `DELETE FROM relationships WHERE from_character_id IN (${cph}) OR to_character_id IN (${cph})`,
+          args: [...characterIds, ...characterIds],
+        });
+      }
+
+      if (seriesIds.length > 0) {
+        const sph = seriesIds.map(() => '?').join(',');
+        await tx.execute({ sql: `DELETE FROM characters WHERE series_id IN (${sph})`, args: seriesIds });
+        await tx.execute({ sql: `DELETE FROM volumes WHERE series_id IN (${sph})`, args: seriesIds });
+        await tx.execute({ sql: `DELETE FROM gallery_images WHERE series_id IN (${sph})`, args: seriesIds });
+        await tx.execute({ sql: `DELETE FROM attachments WHERE series_id IN (${sph})`, args: seriesIds });
+        await tx.execute({ sql: `DELETE FROM series_tags WHERE series_id IN (${sph})`, args: seriesIds });
+        await tx.execute({ sql: `DELETE FROM series_genres WHERE series_id IN (${sph})`, args: seriesIds });
+        await tx.execute({ sql: `DELETE FROM series_content_warnings WHERE series_id IN (${sph})`, args: seriesIds });
+      }
+
+      if (groupIds.length > 0) {
+        const gph = groupIds.map(() => '?').join(',');
+        await tx.execute({ sql: `DELETE FROM series_group_items WHERE group_id IN (${gph})`, args: groupIds });
+      }
+      await tx.execute({ sql: `DELETE FROM series_groups WHERE library_id IN (${lph})`, args: libraryIds });
+      await tx.execute({ sql: `DELETE FROM series WHERE library_id IN (${lph})`, args: libraryIds });
+      await tx.execute({ sql: `DELETE FROM libraries WHERE owner_id = ?`, args: [ownerId] });
+      await tx.execute({ sql: `DELETE FROM tags WHERE owner_id = ?`, args: [ownerId] });
+      await tx.execute({ sql: `DELETE FROM statuses WHERE owner_id = ?`, args: [ownerId] });
+      await tx.execute({ sql: `DELETE FROM content_warnings WHERE owner_id = ?`, args: [ownerId] });
+      await tx.execute({ sql: `DELETE FROM app_settings WHERE owner_id = ?`, args: [ownerId] });
+      await tx.execute({ sql: `DELETE FROM users WHERE id = ?`, args: [ownerId] });
+      await tx.commit();
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
+  } else {
+    // No libraries at all (shouldn't normally happen — every account gets
+    // a default one on sign-up — but handle it rather than assume) means
+    // nothing series-shaped to clean up; still need to clear the
+    // account-level tables and the user row itself.
+    const tx = await db.transaction('write');
+    try {
+      await tx.execute({ sql: `DELETE FROM tags WHERE owner_id = ?`, args: [ownerId] });
+      await tx.execute({ sql: `DELETE FROM statuses WHERE owner_id = ?`, args: [ownerId] });
+      await tx.execute({ sql: `DELETE FROM content_warnings WHERE owner_id = ?`, args: [ownerId] });
+      await tx.execute({ sql: `DELETE FROM app_settings WHERE owner_id = ?`, args: [ownerId] });
+      await tx.execute({ sql: `DELETE FROM users WHERE id = ?`, args: [ownerId] });
+      await tx.commit();
+    } catch (err) {
+      await tx.rollback();
+      throw err;
+    }
+  }
+
+  return { r2Keys };
+}
+
 module.exports = {
   ensureTagsTableIsHealthy,
   ensureTagsTable,
@@ -1286,4 +1403,5 @@ module.exports = {
   },
   gallery: { getBySeries: galleryGetBySeries, add: galleryAdd, updateCaption: galleryUpdateCaption, delete: galleryDelete, reorder: galleryReorder },
   attachments: { getBySeries: attachmentsGetBySeries, add: attachmentsAdd, delete: attachmentsDelete },
+  account: { delete: accountDelete },
 };

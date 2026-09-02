@@ -3538,6 +3538,53 @@ body.sidebar-autohide .sidebar-backdrop.active {
   line-height: 1.45;
 }
 
+/* ── Danger Zone (User Settings) ─────────────────────────────────────────
+   Same section/row shape as the rest of User Settings, but with a
+   danger-tinted border and background wash so it visually separates
+   itself as "the section that breaks things" before you even read it —
+   the way a Danger Zone box reads on most account-settings pages. */
+.settings-section-danger {
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border) 65%);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--danger) 6%, transparent);
+  padding: var(--sp-4) var(--sp-5);
+}
+
+.settings-section-title-danger {
+  color: var(--danger);
+}
+
+.settings-section-danger .settings-row {
+  align-items: flex-start;
+}
+
+/* Warning copy inside the Delete Account confirmation modal — reuses
+   .form-hint's sizing but recolors toward danger-red so it doesn't read
+   as an ordinary muted hint. */
+.delete-account-warning {
+  color: color-mix(in srgb, var(--danger) 85%, var(--text-main) 15%);
+  line-height: 1.55;
+  margin-bottom: var(--sp-4);
+}
+
+.delete-account-warning strong {
+  color: var(--danger);
+}
+
+#delete-account-error {
+  color: var(--danger);
+  min-height: 1.4em;
+}
+
+#delete-account-error:empty {
+  display: none;
+}
+
+#btn-confirm-delete-account:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Series Groups (Collapsible Umbrella Cards) ──────────────────────────── */
 .series-groups-section {
   margin-bottom: var(--sp-6);

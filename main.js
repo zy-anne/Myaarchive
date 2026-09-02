@@ -14,7 +14,7 @@ require('dotenv').config({
 // Line 14 in main.js:
 const { createDesktopClient, removeLocalReplicaFiles } = require('./data-layer/client');
 const dataLayer = require('./data-layer');
-const { ensureUsersTable, signUp, signIn, userExists } = require('./auth/localAuth.js');
+const { ensureUsersTable, signUp, signIn, userExists, verifyPassword } = require('./auth/localAuth.js');
 const { createR2Client, makeKey, uploadBuffer, deleteObject, downloadBuffer } = require('./storage/r2');
 const { getOrDownload, evictIfOverLimit } = require('./storage/cache');
 
@@ -221,6 +221,31 @@ function requireUser() {
   if (!currentUser) throw new Error('Not signed in');
   return currentUser.id;
 }
+
+// ─── IPC: Account (Danger Zone) ─────────────────────────────────────────
+// Permanently deletes the signed-in account and every row it owns. Gated
+// behind a fresh password check (see auth/localAuth.js#verifyPassword)
+// even though the person is already signed in — the confirmation typed in
+// the renderer (their username) is a "you meant to click this" guard, the
+// password is the actual authorization check.
+handle('account:delete', async (_, password) => {
+  const userId = requireUser();
+  const ok = await verifyPassword(db, userId, password);
+  if (!ok) return { ok: false, error: 'Incorrect password' };
+
+  const { r2Keys } = await dataLayer.account.delete(db, userId);
+
+  // Best-effort R2 cleanup — the DB side is already fully committed at
+  // this point, so a failure here just leaves orphaned objects in the
+  // shared bucket rather than an inconsistent account.
+  for (const key of r2Keys) {
+    try { await deleteObject(s3, process.env.R2_BUCKET_NAME, key); } catch { /* orphaned object — non-fatal */ }
+  }
+
+  clearSession();
+  currentUser = null;
+  return { ok: true };
+});
 
 // ─── Window & lifecycle ─────────────────────────────────────────────────
 

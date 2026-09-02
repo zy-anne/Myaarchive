@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld('api', {
     signOut: () => invoke('auth:signOut'),
     currentUser: () => invoke('auth:currentUser'),
   },
+  account: {
+    delete: (password) => invoke('account:delete', password),
+  },
   series: {
     getAll: (f) => invoke('series:getAll', f),
     get: (id) => invoke('series:get', id),

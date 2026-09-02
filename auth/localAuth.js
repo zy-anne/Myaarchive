@@ -49,4 +49,16 @@ async function userExists(db, userId) {
     return !!row;
 }
 
-module.exports = { ensureUsersTable, signUp, signIn, userExists };
+// Re-verifies a plaintext password against the stored hash for an
+// already-known user id (as opposed to signIn, which looks the user up by
+// username). Used to gate destructive actions — currently just account
+// deletion — behind a fresh password check, even though the person is
+// already signed in, so a moment left alone at an unlocked computer can't
+// be turned into a silent account wipe.
+async function verifyPassword(db, userId, password) {
+    const row = (await db.execute({ sql: 'SELECT password_hash FROM users WHERE id = ?', args: [userId] })).rows[0];
+    if (!row) return false;
+    return bcrypt.compare(password || '', row.password_hash);
+}
+
+module.exports = { ensureUsersTable, signUp, signIn, userExists, verifyPassword };

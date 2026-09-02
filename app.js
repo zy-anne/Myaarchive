@@ -519,6 +519,62 @@ async function handleSignOut() {
   state.libraries = [];
 }
 
+// ─── Danger Zone: Delete Account ───────────────────────────────────────────
+// Two-part confirmation before this ever reaches the IPC layer: the person
+// must type their own username exactly (a "you meant to click this" guard
+// — the Confirm button stays disabled until it matches) and re-enter their
+// password (the actual authorization check, re-verified server-side in
+// main.js even though they're already signed in). Opens from inside User
+// Settings, stacking on top of it the same way "Manage Statuses" stacks on
+// top of the Add/Edit Title modal elsewhere in this app.
+
+function openDeleteAccountModal() {
+  const username = state.currentUser?.username || '';
+  el('delete-account-username').textContent = username || 'your account';
+  el('f-delete-account-confirm').value = '';
+  el('f-delete-account-password').value = '';
+  el('delete-account-error').textContent = '';
+  el('btn-confirm-delete-account').disabled = true;
+  openModal('overlay-delete-account');
+  el('f-delete-account-confirm').focus();
+}
+
+function updateDeleteAccountButtonState() {
+  const username = state.currentUser?.username || '';
+  const typed = el('f-delete-account-confirm').value;
+  const password = el('f-delete-account-password').value;
+  const matches = username.length > 0 && typed === username;
+  el('btn-confirm-delete-account').disabled = !(matches && password.length > 0);
+}
+
+async function handleDeleteAccountSubmit() {
+  const password = el('f-delete-account-password').value;
+  const btn = el('btn-confirm-delete-account');
+  const errorEl = el('delete-account-error');
+  errorEl.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+
+  try {
+    const result = await window.api.account.delete(password);
+    if (!result.ok) {
+      errorEl.textContent = result.error || 'Could not delete account';
+      updateDeleteAccountButtonState();
+      return;
+    }
+    // Account and every row it owned are gone server-side — the cleanest
+    // way back to a known-good state client-side is the same full reload
+    // the regular sign-out path already relies on elsewhere in this app,
+    // rather than trying to hand-reset every piece of in-memory state.
+    window.location.reload();
+  } catch (e) {
+    errorEl.textContent = e.message || 'Could not delete account';
+    updateDeleteAccountButtonState();
+  } finally {
+    btn.textContent = 'Permanently Delete Account';
+  }
+}
+
 // ─── Contextual "Add New" Shortcut (Ctrl/Cmd+N) ────────────────────────────
 
 function handleAddNewShortcut() {
@@ -553,6 +609,12 @@ function bindEvents() {
   el('btn-open-settings')?.addEventListener('click', openUserSettingsModal);
   el('btn-settings-signout')?.addEventListener('click', handleSignOut);
   el('btn-auth-signout')?.addEventListener('click', handleSignOut);
+
+  // Danger Zone: Delete Account
+  el('btn-open-delete-account')?.addEventListener('click', openDeleteAccountModal);
+  el('f-delete-account-confirm')?.addEventListener('input', updateDeleteAccountButtonState);
+  el('f-delete-account-password')?.addEventListener('input', updateDeleteAccountButtonState);
+  el('btn-confirm-delete-account')?.addEventListener('click', handleDeleteAccountSubmit);
 
   // Settings Modal Controls
   el('setting-autohide-sidebar')?.addEventListener('change', (e) => {

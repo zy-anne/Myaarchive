@@ -1118,9 +1118,53 @@
             </div>
           </div>
         </div>
+
+        <!-- Danger Zone -->
+        <div class="settings-section settings-section-danger">
+          <div class="settings-section-title settings-section-title-danger">Danger Zone</div>
+
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <div class="settings-row-label">Delete Account</div>
+              <div class="settings-row-desc">Permanently deletes your account and everything in it — every category,
+                title, volume, character, picture, and file. This cannot be undone.</div>
+            </div>
+            <button class="btn btn-danger" id="btn-open-delete-account">Delete Account…</button>
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-primary" data-close="overlay-user-settings">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Account Modal (typed confirmation + password) -->
+  <div class="overlay hidden" id="overlay-delete-account">
+    <div class="modal modal-sm" id="modal-delete-account">
+      <div class="modal-header">
+        <h2>Delete Account</h2>
+        <button class="close-btn" data-close="overlay-delete-account">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="form-hint delete-account-warning">
+          This permanently deletes <strong id="delete-account-username">your account</strong> and every category,
+          title, volume, character, relationship, picture, and file attached to it. There is no undo, and no way for
+          anyone — including the app's owner — to recover it afterward.
+        </p>
+        <div class="form-group">
+          <label for="f-delete-account-confirm">Type your username to confirm</label>
+          <input id="f-delete-account-confirm" type="text" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="form-group">
+          <label for="f-delete-account-password">Password</label>
+          <input id="f-delete-account-password" type="password" autocomplete="current-password">
+        </div>
+        <p class="form-hint" id="delete-account-error"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-delete-account">Cancel</button>
+        <button class="btn btn-danger" id="btn-confirm-delete-account" disabled>Permanently Delete Account</button>
       </div>
     </div>
   </div>
