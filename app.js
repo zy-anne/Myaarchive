@@ -44,6 +44,7 @@ let state = {
   selectedNavIconImage: null,
   theme: 'dark',
   autoHideSidebar: false,  // boolean — persisted via settings (autoHideSidebar)
+  groupsSectionCollapsed: false, // boolean — persisted via settings (groupsSectionCollapsed)
   currentUser: null,       // current signed in user
   seriesViewMode: 'table', // 'table' | 'card' — persisted via settings
   charViewMode: 'grid',    // 'grid' | 'list' — persisted via settings
@@ -440,12 +441,14 @@ async function loadSettings() {
   const settings = await window.api.settings.getAll();
   state.theme = settings.theme === 'light' ? 'light' : 'dark';
   state.autoHideSidebar = settings.autoHideSidebar === 'true';
+  state.groupsSectionCollapsed = settings.groupsSectionCollapsed === 'true';
   state.seriesViewMode = settings.seriesViewMode === 'card' ? 'card' : 'table';
   state.charViewMode = settings.charViewMode === 'list' ? 'list' : 'grid';
   state.sortField = ['title', 'author', 'rating', 'year_published', 'date_started', 'date_finished'].includes(settings.sortField) ? settings.sortField : 'title';
   state.sortDir = settings.sortDir === 'desc' ? 'desc' : 'asc';
   applyTheme();
   applySidebarAutoHide();
+  applyGroupsCollapsed();
 }
 
 function applyTheme() {
@@ -790,7 +793,7 @@ function bindEvents() {
   });
 
   // Series Groups (umbrella cards + modal)
-  el('btn-add-series-group').addEventListener('click', () => openGroupModal(null));
+  el('btn-groups-collapse').addEventListener('click', toggleGroupsCollapsed);
   el('btn-section-add-group').addEventListener('click', () => openGroupModal(null));
   el('btn-save-group').addEventListener('click', saveGroup);
   el('btn-delete-group').addEventListener('click', deleteGroup);
@@ -1519,6 +1522,23 @@ function showLibrary() {
 
 const GROUP_ROLES = ['Main Story', 'Side Story', 'Prequel', 'Sequel', 'Spin-off', 'Companion', 'Short Story', 'Novella'];
 
+// Reflects state.groupsSectionCollapsed onto the section itself and the
+// toggle button. Only needs to run once per change (on load, and whenever
+// toggled) — re-rendering the group list (renderSeriesGroupsSection) only
+// replaces #series-groups-list's innerHTML, not the section's own class
+// list, so the collapsed state survives every re-render for free.
+function applyGroupsCollapsed() {
+  dom.groupsSection.classList.toggle('collapsed', !!state.groupsSectionCollapsed);
+  const btn = el('btn-groups-collapse');
+  if (btn) btn.setAttribute('aria-expanded', state.groupsSectionCollapsed ? 'false' : 'true');
+}
+
+async function toggleGroupsCollapsed() {
+  state.groupsSectionCollapsed = !state.groupsSectionCollapsed;
+  applyGroupsCollapsed();
+  await window.api.settings.set('groupsSectionCollapsed', state.groupsSectionCollapsed ? 'true' : 'false');
+}
+
 async function loadSeriesGroups() {
   state.seriesGroups = await window.api.seriesGroups.getAll(state.currentLibraryId);
   renderSeriesGroupsSection();
@@ -1530,13 +1550,17 @@ async function loadSeriesGroups() {
 // feature.
 function renderSeriesGroupsSection() {
   const hasGroups = state.seriesGroups.length > 0;
-  dom.groupsSection.classList.toggle('hidden', !hasGroups);
+  // The section (and its "+ New Group" button — the only entry point for
+  // creating one, now that the toolbar duplicate is gone) always shows,
+  // even with zero groups; otherwise there'd be no way to create the
+  // first one. Only the list content below the header is conditional.
+  dom.groupsSection.classList.remove('hidden');
+  dom.groupsCount.textContent = `${state.seriesGroups.length} ${state.seriesGroups.length === 1 ? 'group' : 'groups'}`;
+
   if (!hasGroups) {
-    dom.groupsList.innerHTML = '';
+    dom.groupsList.innerHTML = `<div class="groups-empty-hint">No series groups yet — use "+ New Group" to link related titles (sequels, spin-offs, shared universes).</div>`;
     return;
   }
-
-  dom.groupsCount.textContent = `${state.seriesGroups.length} ${state.seriesGroups.length === 1 ? 'group' : 'groups'}`;
 
   dom.groupsList.innerHTML = state.seriesGroups.map(g => `
     <div class="umbrella-group-card" data-id="${g.id}">

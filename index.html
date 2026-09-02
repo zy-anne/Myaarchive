@@ -153,8 +153,6 @@
               <input type="text" id="search-input" placeholder="Search title or author…" maxlength="300"
                 autocomplete="off">
             </div>
-            <button class="btn btn-ghost btn-sm" id="btn-add-series-group" title="Create a Series Group / Universe">+
-              New Group</button>
             <button class="btn btn-primary" id="btn-add-series">+ Add New Title</button>
           </div>
         </header>
@@ -198,10 +196,12 @@
         <!-- Series Groups (Collapsible Umbrella Cards) -->
         <div id="series-groups-section" class="series-groups-section hidden">
           <div class="groups-section-header">
-            <div class="groups-section-title">
+            <button type="button" class="groups-section-toggle" id="btn-groups-collapse" aria-expanded="true"
+              title="Show/hide series groups">
+              <span class="groups-toggle-chevron">▾</span>
               <span class="groups-section-label">SERIES GROUPS &amp; SHARED UNIVERSES</span>
               <span class="count-badge" id="groups-count">0 groups</span>
-            </div>
+            </button>
             <button class="btn btn-ghost btn-sm" id="btn-section-add-group">+ New Group</button>
           </div>
           <div id="series-groups-list" class="series-groups-list"></div>
