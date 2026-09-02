@@ -913,18 +913,30 @@ function bindEvents() {
   // Tags Input
   dom.tagWrap.addEventListener('click', () => dom.tagInput.focus());
   dom.tagInput.addEventListener('input', handleTagInput);
+  // Focusing an empty tag field should immediately browse existing tags
+  // (the "autofill" people expect), not just wait for the first keystroke.
+  dom.tagInput.addEventListener('focus', handleTagInput);
   dom.tagInput.addEventListener('keydown', handleTagKeydown);
   document.addEventListener('click', (e) => {
-    if (!dom.tagWrap.contains(e.target)) dom.tagDropdown.classList.add('hidden');
+    // tagDropdown is a sibling of tagWrap in the DOM (not nested inside
+    // it), so a click landing on a suggestion itself must also be treated
+    // as "inside" — otherwise this handler raced the option's own click
+    // listener and could interfere with selecting a suggestion.
+    if (!dom.tagWrap.contains(e.target) && !dom.tagDropdown.contains(e.target)) {
+      dom.tagDropdown.classList.add('hidden');
+    }
   });
 
   // Content Warnings Input (mirrors the Tags input above, but backed by
   // its own per-user vocabulary — see loadContentWarnings/addWarning)
   dom.warningWrap.addEventListener('click', () => dom.warningInput.focus());
   dom.warningInput.addEventListener('input', handleWarningInput);
+  dom.warningInput.addEventListener('focus', handleWarningInput);
   dom.warningInput.addEventListener('keydown', handleWarningKeydown);
   document.addEventListener('click', (e) => {
-    if (!dom.warningWrap.contains(e.target)) dom.warningDropdown.classList.add('hidden');
+    if (!dom.warningWrap.contains(e.target) && !dom.warningDropdown.contains(e.target)) {
+      dom.warningDropdown.classList.add('hidden');
+    }
   });
 
   // Tabs
@@ -2330,12 +2342,18 @@ function renderTagChips() {
 // enough to keep the chip UI from breaking.
 const MAX_TAG_LENGTH = 50;
 
+// Renders the tag suggestion dropdown. Fires on 'input' (typing) AND on
+// 'focus' (clicking/tabbing into an empty field) so that focusing the
+// field alone is enough to "autofill" — i.e. browse the existing tag
+// vocabulary — rather than requiring the person to already know and start
+// typing a tag name before anything appears.
 function handleTagInput(e) {
   const val = e.target.value.toLowerCase().trim();
-  if (!val) { dom.tagDropdown.classList.add('hidden'); return; }
 
-  const matches = state.allTags.filter(t => t.name.toLowerCase().includes(val)
-    && !state.selectedTags.some(st => st.name === t.name));
+  const matches = state.allTags.filter(t =>
+    (!val || t.name.toLowerCase().includes(val))
+    && !state.selectedTags.some(st => st.name.toLowerCase() === t.name.toLowerCase())
+  );
 
   if (matches.length > 0) {
     dom.tagDropdown.innerHTML = matches.map(t => `<div class="tag-option">${escapeHTML(t.name)}</div>`).join('');
@@ -2395,12 +2413,15 @@ function renderWarningChips() {
   });
 }
 
+// Same "focus also shows suggestions" behavior as handleTagInput above —
+// see the comment there for why.
 function handleWarningInput(e) {
   const val = e.target.value.toLowerCase().trim();
-  if (!val) { dom.warningDropdown.classList.add('hidden'); return; }
 
-  const matches = state.allWarnings.filter(w => w.name.toLowerCase().includes(val)
-    && !state.selectedWarnings.some(sw => sw.name === w.name));
+  const matches = state.allWarnings.filter(w =>
+    (!val || w.name.toLowerCase().includes(val))
+    && !state.selectedWarnings.some(sw => sw.name.toLowerCase() === w.name.toLowerCase())
+  );
 
   if (matches.length > 0) {
     dom.warningDropdown.innerHTML = matches.map(w => `<div class="tag-option">${escapeHTML(w.name)}</div>`).join('');
@@ -2466,6 +2487,7 @@ function openSeriesModal(series = null) {
   state.selectedTags = series ? [...series.tags] : [];
   renderTagChips();
   dom.tagInput.value = '';
+  dom.tagDropdown.classList.add('hidden');
 
   state.selectedGenres = series ? series.genres.map(g => g.name) : [];
   renderGenreSwatches();
@@ -2473,6 +2495,7 @@ function openSeriesModal(series = null) {
   state.selectedWarnings = series ? [...series.content_warnings] : [];
   renderWarningChips();
   dom.warningInput.value = '';
+  dom.warningDropdown.classList.add('hidden');
 
   // Additional details (all optional)
   state.selectedRating = series?.rating || 0;
