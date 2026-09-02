@@ -3510,6 +3510,52 @@ const typeColors = {
   Other: { border: '#b2bec3', background: '#b2bec3' }
 };
 
+// vis-network draws an edge label as a single line unless the string
+// itself contains '\n' — it never wraps long text on its own, so a label
+// like "Childhood Best Friends Turned Rivals" used to render as one long
+// unreadable run of characters sitting on top of the arrow. This breaks a
+// label into short lines at word boundaries (falling back to a hard
+// character break for a single very long word), caps it at a handful of
+// lines, and ellipsizes anything left over — the full, untruncated text is
+// still available as the edge's hover tooltip (see the `title` field on
+// each edge below), so nothing is ever fully lost, just kept off the graph
+// itself past a reasonable size.
+function wrapEdgeLabel(text, maxLineLength = 14, maxLines = 3) {
+  const raw = (text || '').trim();
+  if (!raw) return '';
+
+  const words = raw.split(/\s+/);
+  const lines = [];
+  let current = '';
+  const pushCurrent = () => { if (current) { lines.push(current); current = ''; } };
+
+  for (let word of words) {
+    // Hard-break a single word that's longer than a whole line on its own
+    // (e.g. a long name with no spaces) rather than let it overflow.
+    while (word.length > maxLineLength) {
+      pushCurrent();
+      lines.push(word.slice(0, maxLineLength));
+      word = word.slice(maxLineLength);
+    }
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length > maxLineLength) {
+      pushCurrent();
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  pushCurrent();
+
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    const last = lines[maxLines - 1].replace(/\s+$/, '');
+    lines[maxLines - 1] = (last.length >= maxLineLength ? last.slice(0, maxLineLength - 1) : last) + '…';
+  }
+
+  return lines.join('\n');
+}
+
 async function showGraph() {
   openModal('overlay-graph');
 
@@ -3588,8 +3634,9 @@ async function showGraph() {
       from: r.from_character_id,
       to: r.to_character_id,
       arrows: r.is_bidirectional ? 'to, from' : 'to',
-      label: relLabel(r),
-      font: { align: 'middle', size: 10, face: 'IBM Plex Mono', background: cBg, color: cMuted, strokeWidth: 0 },
+      label: wrapEdgeLabel(relLabel(r)),
+      title: relLabel(r), // full, unwrapped text as a hover tooltip — nothing is lost even when the on-graph label above is wrapped or ellipsized
+      font: { align: 'middle', size: 11, face: 'IBM Plex Mono', background: cBg, color: cMuted, strokeWidth: 0, multi: false },
       color: { color: c.border, highlight: '#A6803C', opacity: 0.8 },
       width: 2,
       smooth
@@ -3601,7 +3648,10 @@ async function showGraph() {
     interaction: { hover: true, tooltipDelay: 200 },
     physics: {
       solver: 'forceAtlas2Based',
-      forceAtlas2Based: { gravitationalConstant: -50, centralGravity: 0.01, springLength: 100, springConstant: 0.08 }
+      // springLength is a bit longer than vis-network's default so that
+      // wrapped, multi-line edge labels (see wrapEdgeLabel above) have
+      // room to sit along the edge without crowding neighboring nodes.
+      forceAtlas2Based: { gravitationalConstant: -50, centralGravity: 0.01, springLength: 160, springConstant: 0.08 }
     }
   };
 

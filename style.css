@@ -2409,53 +2409,6 @@ select option:focus {
   font-family: var(--font-ui);
 }
 
-/* Toggle */
-.toggle-label {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  cursor: pointer;
-  font-family: var(--font-ui);
-  text-transform: none;
-  font-weight: 500;
-  font-size: 13px;
-  color: var(--text-main);
-}
-
-.toggle-label input {
-  display: none;
-}
-
-.toggle-track {
-  width: 36px;
-  height: 20px;
-  background: var(--border);
-  border-radius: 10px;
-  position: relative;
-  transition: all 0.15s;
-  flex-shrink: 0;
-}
-
-.toggle-thumb {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  background: #FFF;
-  border-radius: 50%;
-  transition: all 0.15s;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
-
-.toggle-label input:checked+.toggle-track {
-  background: var(--primary);
-}
-
-.toggle-label input:checked+.toggle-track .toggle-thumb {
-  left: 18px;
-}
-
 /* ── Custom Selectors (Relationships) ────────────────────────────────────── */
 .char-picker {
   display: flex;
@@ -2976,6 +2929,25 @@ select option:focus {
   min-height: 0;
 }
 
+/* vis-network injects its hover tooltip as a plain div (class
+   .vis-tooltip) inside the network's container — used here to show an
+   edge's full, unwrapped relationship label (see wrapEdgeLabel in app.js)
+   when the on-graph text has been wrapped or ellipsized for space.
+   Restyled to match the app's theme instead of the browser-default
+   yellow tooltip box. */
+#graph-container .vis-tooltip {
+  font-family: var(--font-ui) !important;
+  font-size: 12.5px !important;
+  color: var(--text-main) !important;
+  background: var(--surface-hover) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 6px 10px !important;
+  box-shadow: var(--shadow-md) !important;
+  max-width: 240px;
+  white-space: normal !important;
+}
+
 .graph-hint {
   text-align: center;
   padding-bottom: var(--sp-4);
@@ -3324,19 +3296,32 @@ input[type="color"] {
 }
 
 /* ── Toggle Switch ───────────────────────────────────────────────────────── */
+/* Note: this class previously had a second, conflicting definition earlier
+   in this file (two separate ".toggle-label"/".toggle-track"/".toggle-thumb"
+   rule sets). That duplication is what caused the switch to render on top
+   of its own label text ("Bidirectional" showing as "3idirectional") in
+   some cases — the two blocks disagreed on how the checkbox itself should
+   be hidden, and disagreed on track/thumb sizing. Consolidated into a
+   single definition below; do not re-add a second copy of these rules
+   elsewhere in the file. */
 .toggle-label {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
   user-select: none;
+  font-family: var(--font-ui);
+  text-transform: none;
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text-main);
 }
 
+/* display:none (rather than the visually-hidden opacity/width/height
+   pattern) removes the native checkbox from layout entirely and
+   unambiguously — nothing left for it to overlap. */
 .toggle-label input[type="checkbox"] {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
+  display: none;
 }
 
 .toggle-track {
@@ -3360,6 +3345,7 @@ input[type="color"] {
   top: 2px;
   left: 2px;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .toggle-label input:checked+.toggle-track {
