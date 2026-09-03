@@ -10,6 +10,7 @@ let state = {
   currentGalleryImage: null,
   allTags: [],
   selectedTags: [],
+  allBookTypes: [], // custom book types the signed-in user has used, across all of THEIR OWN categories — never shared across accounts (see loadBookTypes)
   allGenres: [],
   selectedGenres: [],
   allWarnings: [],
@@ -423,6 +424,7 @@ async function init() {
   await loadTags();
   await loadGenres();
   await loadContentWarnings();
+  await loadBookTypes();
   await loadStatuses();
   renderStatusFilterButtons();
   await loadLibrary();
@@ -2377,9 +2379,18 @@ function handleTagKeydown(e) {
 }
 
 function addTag(name) {
-  const trimmed = name.slice(0, MAX_TAG_LENGTH);
-  if (!state.selectedTags.some(t => t.name.toLowerCase() === trimmed.toLowerCase())) {
-    state.selectedTags.push({ name: trimmed });
+  const trimmed = name.slice(0, MAX_TAG_LENGTH).trim();
+  if (!trimmed) return;
+  // If an existing tag matches case-insensitively (e.g. typing "modern"
+  // when "Modern" already exists), snap to that tag's exact stored name
+  // and color instead of adding what would otherwise look like a brand
+  // new, differently-cased duplicate. The database already dedupes tags
+  // case-insensitively on save, but doing it here too means the chip
+  // shows the canonical casing immediately, not just after a reload.
+  const existing = state.allTags.find(t => t.name.toLowerCase() === trimmed.toLowerCase());
+  const tagToAdd = existing ? { id: existing.id, name: existing.name, color: existing.color } : { name: trimmed };
+  if (!state.selectedTags.some(t => t.name.toLowerCase() === tagToAdd.name.toLowerCase())) {
+    state.selectedTags.push(tagToAdd);
   }
   dom.tagInput.value = '';
   dom.tagDropdown.classList.add('hidden');
@@ -2445,13 +2456,47 @@ function handleWarningKeydown(e) {
 }
 
 function addWarning(name) {
-  const trimmed = name.slice(0, MAX_WARNING_LENGTH);
-  if (!state.selectedWarnings.some(w => w.name.toLowerCase() === trimmed.toLowerCase())) {
-    state.selectedWarnings.push({ name: trimmed });
+  const trimmed = name.slice(0, MAX_WARNING_LENGTH).trim();
+  if (!trimmed) return;
+  // Same case-insensitive snap-to-existing behavior as addTag() above —
+  // see the comment there.
+  const existing = state.allWarnings.find(w => w.name.toLowerCase() === trimmed.toLowerCase());
+  const warningToAdd = existing ? { id: existing.id, name: existing.name } : { name: trimmed };
+  if (!state.selectedWarnings.some(w => w.name.toLowerCase() === warningToAdd.name.toLowerCase())) {
+    state.selectedWarnings.push(warningToAdd);
   }
   dom.warningInput.value = '';
   dom.warningDropdown.classList.add('hidden');
   renderWarningChips();
+}
+
+// ─── Book Type (free-text field with a suggestion list) ────────────────────
+// f-s-booktype is a plain <input list="book-type-options">, not a <select>,
+// so a custom value has always been fully typeable and savable — but the
+// datalist's suggestions were a fixed, hardcoded set. That meant a custom
+// type you'd already used (e.g. "Webtoon") was never offered back to you as
+// a suggestion, which made custom types feel unsupported even though they
+// worked. This keeps the suggestion list current: the starter set, plus
+// every distinct book_type this signed-in user has already used.
+//
+// Deliberately scoped to THIS user only, across all of their own
+// categories/libraries — never shared globally the way genres are (see the
+// README's note that genres are "the one exception" that's shared/global).
+// window.api.series.getAll({}) with no libraryId returns every series this
+// account owns; main.js's requireUser() already enforces that server-side,
+// so this can never pick up another account's book types.
+const BOOK_TYPE_SEED_OPTIONS = ['Novel', 'Light Novel', 'Web Novel', 'Graphic Novel', 'Manga', 'Manhwa', 'Manhua', 'Comic'];
+
+async function loadBookTypes() {
+  const allOwnSeries = await window.api.series.getAll({});
+  state.allBookTypes = [...new Set(allOwnSeries.map(s => (s.book_type || '').trim()).filter(Boolean))];
+}
+
+function renderBookTypeOptions() {
+  const all = [...new Set([...BOOK_TYPE_SEED_OPTIONS, ...state.allBookTypes])]
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  const datalist = el('book-type-options');
+  if (datalist) datalist.innerHTML = all.map(t => `<option value="${escapeHTML(t)}">`).join('');
 }
 
 function openSeriesModal(series = null) {
@@ -2503,6 +2548,7 @@ function openSeriesModal(series = null) {
     onChange: (n) => { state.selectedRating = n; el('f-s-rating').value = n; },
   });
   el('f-s-rating').value = state.selectedRating;
+  renderBookTypeOptions();
   el('f-s-booktype').value = series?.book_type || '';
   el('f-s-date-started').value = series?.date_started || '';
   el('f-s-date-finished').value = series?.date_finished || '';
@@ -2609,6 +2655,7 @@ async function saveSeries() {
   loadTags();
   loadGenres();
   loadContentWarnings();
+  loadBookTypes();
   if (el('view-library').classList.contains('active')) loadLibrary();
 }
 
@@ -3688,6 +3735,32 @@ async function showGraph() {
     } else if (params.edges.length > 0) {
       const rel = state.relationships.find(r => r.id === params.edges[0]);
       if (rel) openRelModal(rel);
+    }
+  });
+
+  // ── Zoom-out limit ──────────────────────────────────────────────────
+  // vis-network has no built-in min/max zoom option, so this is the usual
+  // workaround: figure out the scale that exactly fits the whole graph in
+  // view, then clamp any further zoom-out to a fraction of that. The
+  // limit is deliberately relative to the fit scale (not a fixed number)
+  // so a 3-character graph and a 50-character graph each get a sensible
+  // "can't scroll out past roughly double the graph's own footprint"
+  // boundary instead of one fixed zoom level that'd feel wrong on either.
+  // Computed after physics settles (stabilizationIterationsDone) so it's
+  // based on the graph's actual settled layout, not its initial random
+  // starting positions.
+  let graphMinScale = null;
+  const ZOOM_OUT_LIMIT_FACTOR = 0.5; // 0.5x the fit scale ≈ ~4x the fit-view area (area scales with scale²)
+
+  state.graphNetwork.once('stabilizationIterationsDone', () => {
+    if (!state.graphNetwork) return; // modal may have closed mid-stabilization
+    state.graphNetwork.fit({ animation: false });
+    graphMinScale = state.graphNetwork.getScale() * ZOOM_OUT_LIMIT_FACTOR;
+  });
+
+  state.graphNetwork.on('zoom', (params) => {
+    if (graphMinScale !== null && params.scale < graphMinScale) {
+      state.graphNetwork.moveTo({ scale: graphMinScale });
     }
   });
 }
