@@ -1036,11 +1036,6 @@ function bindEvents() {
 
   el('btn-view-graph').addEventListener('click', showGraph);
 
-  el('btn-auth-signout').addEventListener('click', async () => {
-    await window.api.auth.signOut();
-    window.location.reload(); // simplest way back to a clean auth-gate state
-  });
-
   // Modals close
   document.querySelectorAll('.close-btn[data-close], .btn-ghost[data-close]').forEach(btn => {
     btn.addEventListener('click', (e) => closeModal(e.currentTarget.dataset.close));
@@ -2636,7 +2631,8 @@ async function saveSeries() {
       closeModal('overlay-series');
       await loadLibraries();
       state.currentLibraryId = selectedLibId;
-      await selectLibrary(selectedLibId);
+      renderSidebarNav();
+      applyCurrentLibraryHeader();
       await openSeriesDetail(state.currentSeries.id);
     } else {
       toast('Title updated');
@@ -2649,7 +2645,7 @@ async function saveSeries() {
     closeModal('overlay-series');
     if (selectedLibId !== state.currentLibraryId) {
       await loadLibraries();
-      await selectLibrary(selectedLibId);
+      switchLibrary(selectedLibId);
     }
   }
   loadTags();
@@ -2726,7 +2722,8 @@ async function handleTransferOrCopySubmit() {
       await loadLibraries();
       if (state.currentSeries && state.currentSeries.id === transferTargetSeries.id) {
         state.currentLibraryId = targetLibId;
-        await selectLibrary(targetLibId);
+        renderSidebarNav();
+        applyCurrentLibraryHeader();
         await openSeriesDetail(transferTargetSeries.id);
       } else {
         await loadLibrary();
