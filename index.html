@@ -76,6 +76,18 @@
         <div id="sidebar-nav-list"></div>
         <button class="nav-add-library" id="btn-add-library">+ Add Category</button>
       </div>
+      <div class="sidebar-insights">
+        <div class="sidebar-insights-label">Insights</div>
+        <button class="nav-item" id="btn-nav-stats">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="20" x2="12" y2="10"></line>
+            <line x1="18" y1="20" x2="18" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="16"></line>
+          </svg>
+          <span>Reading Statistics</span>
+        </button>
+      </div>
       <div class="sidebar-footer">
         <button class="nav-item" id="btn-open-settings">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -345,6 +357,171 @@
           </div>
         </div>
       </section>
+
+      <!-- Reading Statistics View -->
+      <section id="view-stats" class="view hidden">
+        <header class="view-header">
+          <div class="header-left">
+            <h1 class="view-title">Reading Statistics</h1>
+          </div>
+        </header>
+        <div class="stats-scroll" id="stats-scroll">
+
+          <!-- Annual Milestone + Quick Stats -->
+          <div class="stats-hero-grid">
+            <div class="stats-milestone-card">
+              <div class="stats-milestone-header">
+                <div>
+                  <div class="stats-eyebrow">Annual Milestone</div>
+                  <h2 class="stats-milestone-title" id="stats-year-heading">Reading Journey</h2>
+                </div>
+                <span class="stats-pace-badge hidden" id="stats-pace-badge"></span>
+              </div>
+
+              <div id="stats-goal-configured" class="hidden">
+                <div class="stats-milestone-count">
+                  <span class="stats-milestone-num" id="stats-goal-current">0</span>
+                  <span class="stats-milestone-of">of</span>
+                  <span class="stats-milestone-goal" id="stats-goal-target">0</span>
+                  <span class="stats-milestone-unit">books cataloged</span>
+                  <span class="stats-milestone-pct" id="stats-goal-pct">0%</span>
+                </div>
+                <div class="stats-progress-track">
+                  <div class="stats-progress-fill" id="stats-goal-progress-fill"></div>
+                </div>
+                <div class="stats-milestone-footer">
+                  <span>Target: <strong id="stats-goal-target-label">0</strong> Works
+                    <button type="button" class="stats-goal-edit-btn" id="btn-edit-goal"
+                      title="Change in User Settings">✎</button>
+                  </span>
+                  <span id="stats-goal-remaining">0 Books Remaining</span>
+                </div>
+              </div>
+
+              <div id="stats-goal-unset" class="stats-goal-unset">
+                <p class="stats-goal-unset-text">Set a reading goal for <strong id="stats-goal-unset-year"></strong> in
+                  User Settings to start tracking your pace.</p>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-goal-open-settings">Open User
+                  Settings</button>
+              </div>
+
+              <div class="stats-velocity-row">
+                <span class="stats-velocity-label">Monthly Velocity</span>
+                <svg class="stats-velocity-sparkline" id="stats-velocity-sparkline" viewBox="0 0 200 40"
+                  preserveAspectRatio="none"></svg>
+                <span class="stats-velocity-value" id="stats-velocity-value">—</span>
+              </div>
+            </div>
+
+            <div class="stats-quick-grid">
+              <div class="stat-card stat-card-sm">
+                <div class="stat-card-icon">📖</div>
+                <div class="stat-card-label">Active</div>
+                <div class="stat-card-value" id="stats-quick-active">0</div>
+                <div class="stat-card-sub">Currently Reading</div>
+              </div>
+              <div class="stat-card stat-card-sm">
+                <div class="stat-card-icon">🔖</div>
+                <div class="stat-card-label">Queued</div>
+                <div class="stat-card-value" id="stats-quick-queued">0</div>
+                <div class="stat-card-sub">To Be Read (TBR)</div>
+              </div>
+              <div class="stat-card stat-card-sm">
+                <div class="stat-card-icon">📑</div>
+                <div class="stat-card-label">Chapters</div>
+                <div class="stat-card-value" id="stats-quick-chapters">0</div>
+                <div class="stat-card-sub">Total Chapters Logged</div>
+              </div>
+              <div class="stat-card stat-card-sm">
+                <div class="stat-card-icon">★</div>
+                <div class="stat-card-label">Critique</div>
+                <div class="stat-card-value" id="stats-quick-rating">—</div>
+                <div class="stat-card-sub" id="stats-quick-rating-sub">Average Rating</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reading Timeline Distribution -->
+          <div class="stats-section stats-section-compact">
+            <div class="stats-section-header">
+              <h3 class="stats-section-title">Reading Timeline Distribution</h3>
+              <div class="stats-timeline-controls">
+                <select id="stats-year-select" aria-label="Year"></select>
+                <select id="stats-month-select" aria-label="Month"></select>
+              </div>
+            </div>
+
+            <div id="stats-yearly-panel">
+              <div class="stats-year-chart" id="stats-yearly-monthly-chart"></div>
+            </div>
+
+            <div id="stats-month-panel" class="hidden">
+              <div class="stats-timeline-grid">
+                <div class="stats-timeline-left">
+                  <div id="stats-month-overview"></div>
+                  <div id="stats-streaks"></div>
+                  <div id="stats-weekly-breakdown"></div>
+                </div>
+                <div class="stats-timeline-right">
+                  <div class="stats-heatmap-card">
+                    <div class="stats-heatmap-label">Daily Activity Heatmap</div>
+                    <div class="stats-heatmap-grid" id="stats-heatmap-grid"></div>
+                    <div class="stats-heatmap-legend">
+                      <span>Less</span>
+                      <span class="heatmap-swatch" data-level="0"></span>
+                      <span class="heatmap-swatch" data-level="1"></span>
+                      <span class="heatmap-swatch" data-level="2"></span>
+                      <span class="heatmap-swatch" data-level="3"></span>
+                      <span class="heatmap-swatch" data-level="4"></span>
+                      <span>More</span>
+                    </div>
+                  </div>
+                  <div class="stats-monthly-insights" id="stats-monthly-insights"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reading Profile Radar -->
+          <div class="stats-section stats-section-compact">
+            <h3 class="stats-section-title">Reading Profile Radar</h3>
+            <div class="stats-radar-card">
+              <svg id="stats-radar-svg" viewBox="0 0 320 300"></svg>
+            </div>
+          </div>
+
+          <!-- Book Status Statistic / Top Genres / Rating Distribution — grouped
+               into one compact row instead of three full-width sections -->
+          <div class="stats-compact-grid">
+            <div class="stats-section stats-section-compact stats-compact-cell">
+              <h3 class="stats-section-title">Book Status Statistic</h3>
+              <div class="stats-bar-list" id="stats-status-bars"></div>
+            </div>
+
+            <div class="stats-section stats-section-compact stats-compact-cell">
+              <h3 class="stats-section-title">Top Genres</h3>
+              <div class="stats-bar-list" id="stats-genre-bars"></div>
+            </div>
+
+            <div class="stats-section stats-section-compact stats-compact-cell">
+              <h3 class="stats-section-title">Rating Distribution</h3>
+              <div class="stats-bar-list" id="stats-rating-bars"></div>
+            </div>
+          </div>
+
+          <div class="stats-section stats-section-compact">
+            <h3 class="stats-section-title">Titles Finished by Year (All-Time)</h3>
+            <div class="stats-year-chart" id="stats-year-chart"></div>
+          </div>
+
+          <div id="stats-empty-state" class="empty-state hidden">
+            <div class="empty-icon">📊</div>
+            <h3>No data yet</h3>
+            <p>Add some titles — and mark them finished with a date — to see your reading stats here.</p>
+          </div>
+        </div>
+      </section>
+
 
     </main>
   </div>
@@ -1116,6 +1293,20 @@
               <button type="button" class="type-chip" data-theme="dark" id="chip-theme-dark">Dark Mode</button>
               <button type="button" class="type-chip" data-theme="light" id="chip-theme-light">Light Mode</button>
             </div>
+          </div>
+        </div>
+
+        <!-- Reading Goals -->
+        <div class="settings-section">
+          <div class="settings-section-title">Reading Goals</div>
+
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <div class="settings-row-label">Annual Reading Goal</div>
+              <div class="settings-row-desc">How many titles you're aiming to finish this year — tracked on the Reading
+                Statistics page.</div>
+            </div>
+            <input type="number" id="setting-annual-goal" min="1" placeholder="e.g. 35" class="settings-goal-input">
           </div>
         </div>
 

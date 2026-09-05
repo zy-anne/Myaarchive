@@ -51,6 +51,12 @@ let state = {
   charViewMode: 'grid',    // 'grid' | 'list' — persisted via settings
   sortField: 'title',      // 'title' | 'author' | 'rating' | 'year_published' | 'date_started' | 'date_finished' — persisted via settings
   sortDir: 'asc',          // 'asc' | 'desc' — persisted via settings
+  currentView: 'library',  // 'library' | 'series' | 'stats' — kept in sync by switchView()
+  statsAllSeries: [],      // cached from the last loadStats() call, for re-rendering the hero after editing the goal
+  statsEvents: [],         // cached per-volume/standalone read events for the current stats session
+  statsGoal: null,         // annual reading goal — persisted via settings ('annualReadingGoal'); null = not set yet
+  statsSelectedYear: null, // Reading Timeline Distribution controls
+  statsSelectedMonth: 'all', // 'all' | 1-12
 };
 
 // ─── Elements ─────────────────────────────────────────────────────────────────
@@ -59,6 +65,7 @@ const el = (id) => document.getElementById(id);
 const views = {
   library: el('view-library'),
   series: el('view-series'),
+  stats: el('view-stats'),
 };
 
 const dom = {
@@ -287,13 +294,14 @@ function applyCurrentLibraryHeader() {
 }
 
 function switchLibrary(id) {
-  if (id === state.currentLibraryId) {
+  if (id === state.currentLibraryId && state.currentView === 'library') {
     if (state.autoHideSidebar) {
       el('sidebar')?.classList.remove('sidebar-visible');
       el('sidebar-backdrop')?.classList.remove('active');
     }
     return;
   }
+  el('btn-nav-stats')?.classList.remove('active');
   state.currentLibraryId = id;
   renderSidebarNav();
   applyCurrentLibraryHeader();
@@ -505,6 +513,10 @@ async function openUserSettingsModal() {
     c.classList.toggle('active', c.dataset.theme === state.theme);
   });
 
+  const settings = await window.api.settings.getAll();
+  state.statsGoal = settings.annualReadingGoal ? parseInt(settings.annualReadingGoal) : null;
+  el('setting-annual-goal').value = state.statsGoal || '';
+
   openModal('overlay-user-settings');
 }
 
@@ -636,6 +648,15 @@ function bindEvents() {
     });
   });
 
+  // Reading Goals (User Settings) — auto-saves on blur, same pattern as
+  // the status name/color rows in Manage Statuses.
+  el('setting-annual-goal')?.addEventListener('change', (e) => {
+    saveAnnualGoal(parseInt(e.target.value));
+  });
+  el('setting-annual-goal')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') e.target.blur();
+  });
+
   // Sidebar Drawer Toggle & Hover triggers (for auto-hide mode)
   document.querySelectorAll('.btn-sidebar-toggle').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -693,6 +714,10 @@ function bindEvents() {
 
   // Navigation
   el('btn-back').addEventListener('click', showLibrary);
+
+  // Reading Statistics (sidebar Insights section)
+  el('btn-nav-stats').addEventListener('click', showStats);
+  wireStatsGoalEdit();
 
   // Library Categories (icon + name, add/edit/delete)
   el('btn-add-library').addEventListener('click', () => openCustomizeModal(null));
@@ -1036,8 +1061,10 @@ function bindEvents() {
 
   el('btn-view-graph').addEventListener('click', showGraph);
 
-  // Modals close
-  document.querySelectorAll('.close-btn[data-close], .btn-ghost[data-close]').forEach(btn => {
+  // Modals close — any element with data-close, regardless of its visual
+  // style (ghost, primary, the bare ✕ icon button, etc.) should close its
+  // modal; styling and "does this button close the modal" are unrelated.
+  document.querySelectorAll('[data-close]').forEach(btn => {
     btn.addEventListener('click', (e) => closeModal(e.currentTarget.dataset.close));
   });
   document.addEventListener('keydown', (e) => {
@@ -1056,9 +1083,11 @@ function switchView(viewId) {
     v.classList.remove('active');
     v.classList.add('hidden');
   });
-  const target = views[viewId.replace('view-', '')];
+  const key = viewId.replace('view-', '');
+  const target = views[key];
   target.classList.add('active');
   target.classList.remove('hidden');
+  state.currentView = key;
 }
 
 const TAB_PANES = {
@@ -1580,9 +1609,592 @@ async function setSeriesViewMode(mode) {
 }
 
 function showLibrary() {
+  el('btn-nav-stats')?.classList.remove('active');
+  renderSidebarNav();
   switchView('view-library');
   loadLibrary();
 }
+
+// ─── Reading Statistics ─────────────────────────────────────────────────
+// A separate top-level area (sidebar "Insights" section, not folded into
+// the category list) reporting on the whole account — every title the
+// signed-in user owns across every category — not just the currently
+// selected one. Pulled with window.api.series.getAll({}) (no libraryId),
+// the same "every title I own" call loadBookTypes() already relies on.
+// The Reading Timeline section (heatmap/streaks/weekly breakdown/monthly
+// insights) additionally pulls every VOLUME's actual date_read +
+// chapter_count across every series — real logged completions, not
+// anything simulated — via loadReadingEvents() below. Everything here is
+// plain divs/SVG sized with CSS or computed coordinates rather than a
+// charting library, matching the no-framework, dependency-free approach
+// the rest of the app already takes (e.g. the rating stars, the vis.js-free
+// parts of the relationship graph styling).
+
+const STATS_MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+async function showStats() {
+  el('btn-nav-stats')?.classList.add('active');
+  document.querySelectorAll('#sidebar-nav-list .nav-item').forEach(b => b.classList.remove('active'));
+  switchView('view-stats');
+  if (state.autoHideSidebar) {
+    el('sidebar')?.classList.remove('sidebar-visible');
+    el('sidebar-backdrop')?.classList.remove('active');
+  }
+  try {
+    await loadStats();
+  } catch (err) {
+    // The view has already switched above regardless of what happens here,
+    // so a failure can no longer strand the person looking at whatever
+    // view they were on before with a nav item that (falsely) claims
+    // they're on Reading Statistics — it just leaves the page under-filled
+    // and tells them something went wrong.
+    console.error('[stats] Failed to load reading statistics:', err);
+    toast(`Could not load reading statistics: ${err?.message || err}`, true);
+  }
+}
+
+// Every volume across every series this user owns that has a "Date Read"
+// set, plus every standalone title with a "Date Finished" set (standalones
+// have no volumes/chapter_count of their own, so those events carry 0
+// chapters — they still count toward "completed" totals, just not toward
+// chapters-read totals). This is an N+1 fetch (one volumes:getBySeries
+// call per series), same pattern export:json already uses — fine for a
+// personal library, not meant for thousands of titles. Each series is
+// fetched independently so one bad/slow series can't take down the whole
+// stats page.
+async function loadReadingEvents(allSeries) {
+  const events = [];
+  for (const s of allSeries) {
+    if (s.kind === 'standalone') {
+      if (s.date_finished) {
+        events.push({ date: s.date_finished, chapters: 0, seriesId: s.id, seriesTitle: s.title, genres: s.genres.map(g => g.name) });
+      }
+      continue;
+    }
+    try {
+      const vols = await window.api.volumes.getBySeries(s.id);
+      vols.forEach(v => {
+        if (v.date_read) {
+          events.push({ date: v.date_read, chapters: v.chapter_count || 0, seriesId: s.id, seriesTitle: s.title, genres: s.genres.map(g => g.name) });
+        }
+      });
+    } catch (err) {
+      console.error(`[stats] Failed to load volumes for series ${s.id}:`, err);
+    }
+  }
+  return events;
+}
+
+async function loadStats() {
+  const allSeries = await window.api.series.getAll({});
+  state.statsAllSeries = allSeries;
+  const hasData = allSeries.length > 0;
+
+  el('stats-empty-state').classList.toggle('hidden', hasData);
+  document.querySelectorAll('#view-stats .stats-hero-grid, #view-stats .stats-section').forEach(s => s.classList.toggle('hidden', !hasData));
+  if (!hasData) return;
+
+  const settings = await window.api.settings.getAll();
+  state.statsGoal = settings.annualReadingGoal ? parseInt(settings.annualReadingGoal) : null;
+  state.statsEvents = await loadReadingEvents(allSeries);
+
+  // Each section renders independently — a bug or bad data in one (say,
+  // the radar chart) logs clearly and leaves a gap there, rather than
+  // throwing before the sections above/below it ever get a chance to draw.
+  const sections = [
+    ['year/month controls', () => populateStatsYearMonthControls()],
+    ['milestone hero', () => renderStatsHero(allSeries, state.statsEvents)],
+    ['reading timeline', () => renderStatsTimeline()],
+    ['genre radar', () => renderStatsRadar(allSeries)],
+    ['status breakdown', () => renderStatsStatusBreakdown(allSeries)],
+    ['genre breakdown', () => renderStatsGenreBreakdown(allSeries)],
+    ['rating distribution', () => renderStatsRatingDistribution(allSeries)],
+    ['year chart', () => renderStatsYearChart(allSeries)],
+  ];
+  for (const [label, render] of sections) {
+    try {
+      render();
+    } catch (err) {
+      console.error(`[stats] Failed to render ${label}:`, err);
+    }
+  }
+}
+
+// ── Annual Milestone hero + quick stat cards ────────────────────────────
+
+// The goal is genuinely user-defined — nothing is silently assumed. Until
+// a value is saved to settings ('annualReadingGoal'), state.statsGoal
+// stays null and the milestone card shows a "set your goal" prompt
+// instead of a progress bar. The goal is set from ONE place — the Reading
+// Goals section of User Settings (see openUserSettingsModal /
+// bindEvents' 'setting-annual-goal' wiring) — the stats page itself is
+// read-only for this and just links out to Settings, so there's a single
+// source of truth rather than two editors that can drift out of sync.
+
+function saveAnnualGoal(num) {
+  if (!num || num < 1) {
+    toast('Enter a valid positive number', true);
+    return false;
+  }
+  state.statsGoal = num;
+  window.api.settings.set('annualReadingGoal', String(num));
+  // If the stats page happens to already be loaded, refresh it immediately
+  // rather than waiting for the next visit to pick up the new goal.
+  if (state.statsAllSeries.length) {
+    try {
+      renderStatsHero(state.statsAllSeries, state.statsEvents);
+    } catch (err) {
+      console.error('[stats] Failed to refresh milestone hero after saving goal:', err);
+    }
+  }
+  toast('Reading goal saved');
+  return true;
+}
+
+// Both the pencil on the stats page and the "Open User Settings" button
+// shown when no goal is set just take the person to Settings and focus
+// the real input there, rather than duplicating an editor on the stats
+// page itself.
+function wireStatsGoalEdit() {
+  const jumpToGoalSetting = async () => {
+    await openUserSettingsModal();
+    el('setting-annual-goal')?.focus();
+  };
+  el('btn-edit-goal')?.addEventListener('click', jumpToGoalSetting);
+  el('btn-goal-open-settings')?.addEventListener('click', jumpToGoalSetting);
+}
+
+function renderVelocitySparkline(counts) {
+  const svg = el('stats-velocity-sparkline');
+  if (counts.length < 2 || counts.every(c => c === 0)) {
+    svg.innerHTML = '';
+    return;
+  }
+  const max = Math.max(...counts, 1);
+  const w = 200, h = 40, pad = 4;
+  const stepX = (w - pad * 2) / (counts.length - 1);
+  const points = counts.map((c, i) => {
+    const x = pad + i * stepX;
+    const y = h - pad - (c / max) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const [lastX, lastY] = points[points.length - 1].split(',');
+  svg.innerHTML = `
+    <polyline points="${points.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${lastX}" cy="${lastY}" r="3" fill="var(--accent)"/>
+  `;
+}
+
+function renderStatsHero(allSeries, events) {
+  const now = new Date();
+  const year = now.getFullYear();
+  el('stats-year-heading').textContent = `${year} Reading Journey`;
+
+  const goal = state.statsGoal;
+  const paceBadge = el('stats-pace-badge');
+  paceBadge.classList.add('hidden');
+  paceBadge.classList.remove('stats-pace-ahead', 'stats-pace-behind');
+
+  if (!goal) {
+    el('stats-goal-configured').classList.add('hidden');
+    el('stats-goal-unset').classList.remove('hidden');
+    el('stats-goal-unset-year').textContent = year;
+  } else {
+    el('stats-goal-unset').classList.add('hidden');
+    el('stats-goal-configured').classList.remove('hidden');
+
+    const finishedThisYear = allSeries.filter(s => s.date_finished && new Date(s.date_finished).getFullYear() === year).length;
+    const pct = Math.min(100, Math.round((finishedThisYear / goal) * 100));
+    const remaining = Math.max(0, goal - finishedThisYear);
+
+    el('stats-goal-current').textContent = finishedThisYear;
+    el('stats-goal-target').textContent = goal;
+    el('stats-goal-target-label').textContent = goal;
+    el('stats-goal-pct').textContent = `${pct}%`;
+    el('stats-goal-progress-fill').style.width = `${pct}%`;
+    el('stats-goal-remaining').textContent = `${remaining} Book${remaining === 1 ? '' : 's'} Remaining`;
+
+    // Pace: compare actual progress to where you "should" be given how
+    // much of the year has elapsed, against the goal.
+    const startOfYear = new Date(year, 0, 1);
+    const endOfYear = new Date(year, 11, 31);
+    const dayOfYear = Math.floor((now - startOfYear) / 86400000) + 1;
+    const totalDaysInYear = Math.floor((endOfYear - startOfYear) / 86400000) + 1;
+    const expected = goal * (dayOfYear / totalDaysInYear);
+    const paceDiff = Math.round(finishedThisYear - expected);
+    paceBadge.classList.remove('hidden');
+    if (paceDiff > 0) {
+      paceBadge.textContent = `↗ +${paceDiff} Ahead of Pace`;
+      paceBadge.classList.add('stats-pace-ahead');
+    } else if (paceDiff < 0) {
+      paceBadge.textContent = `↘ ${Math.abs(paceDiff)} Behind Pace`;
+      paceBadge.classList.add('stats-pace-behind');
+    } else {
+      paceBadge.textContent = 'On Pace';
+    }
+  }
+
+  // Monthly velocity sparkline — Jan through the current month, this year.
+  // Independent of whether a goal is set.
+  const monthCounts = new Array(now.getMonth() + 1).fill(0);
+  events.forEach(e => {
+    const d = new Date(e.date);
+    if (d.getFullYear() === year && d.getMonth() <= now.getMonth()) monthCounts[d.getMonth()]++;
+  });
+  renderVelocitySparkline(monthCounts);
+  const monthsElapsed = now.getMonth() + 1;
+  const totalThisYear = monthCounts.reduce((a, b) => a + b, 0);
+  el('stats-velocity-value').textContent = `${monthsElapsed ? (totalThisYear / monthsElapsed).toFixed(1) : '0.0'} books / mo`;
+
+  // Quick stat cards. "Active"/"Queued" are matched against status NAMES
+  // heuristically (statuses are per-user and fully custom), since the
+  // default seeded statuses are literally "Reading" and "Planning" this
+  // works out of the box for most accounts; anything unmatched just shows 0
+  // rather than guessing wrong.
+  const isReadingName = (name) => /read/i.test(name || '') && !/to.?read|tbr/i.test(name || '');
+  const isQueuedName = (name) => /plan|tbr|to.?be.?read|queue/i.test(name || '');
+  const activeCount = allSeries.filter(s => isReadingName(s.status)).length;
+  const queuedCount = allSeries.filter(s => isQueuedName(s.status)).length;
+  const totalChapters = events.reduce((sum, e) => sum + (e.chapters || 0), 0);
+  const rated = allSeries.filter(s => s.rating > 0);
+  const avgRating = rated.length ? rated.reduce((sum, s) => sum + s.rating, 0) / rated.length : 0;
+
+  el('stats-quick-active').textContent = activeCount;
+  el('stats-quick-queued').textContent = queuedCount;
+  el('stats-quick-chapters').textContent = totalChapters.toLocaleString();
+  el('stats-quick-rating').textContent = avgRating ? avgRating.toFixed(1) : '—';
+  el('stats-quick-rating-sub').textContent = rated.length ? `Average Rating (${rated.length} rated)` : 'Average Rating';
+}
+
+// ── Reading Timeline Distribution (year/month controls) ─────────────────
+
+function populateStatsYearMonthControls() {
+  const years = [...new Set(state.statsEvents.map(e => new Date(e.date).getFullYear()).filter(y => !isNaN(y)))].sort((a, b) => b - a);
+  const nowYear = new Date().getFullYear();
+  if (!years.includes(nowYear)) years.unshift(nowYear);
+  if (!state.statsSelectedYear || !years.includes(state.statsSelectedYear)) {
+    state.statsSelectedYear = years[0];
+  }
+
+  const yearSelect = el('stats-year-select');
+  yearSelect.innerHTML = years.map(y => `<option value="${y}" ${y === state.statsSelectedYear ? 'selected' : ''}>${y}</option>`).join('');
+  yearSelect.onchange = () => { state.statsSelectedYear = parseInt(yearSelect.value); renderStatsTimeline(); };
+
+  const monthSelect = el('stats-month-select');
+  monthSelect.innerHTML = `<option value="all">Full Year</option>` +
+    STATS_MONTH_NAMES.map((m, i) => `<option value="${i + 1}" ${state.statsSelectedMonth === i + 1 ? 'selected' : ''}>${m}</option>`).join('');
+  monthSelect.value = state.statsSelectedMonth;
+  monthSelect.onchange = () => {
+    state.statsSelectedMonth = monthSelect.value === 'all' ? 'all' : parseInt(monthSelect.value);
+    renderStatsTimeline();
+  };
+}
+
+function renderStatsTimeline() {
+  const isFullYear = state.statsSelectedMonth === 'all';
+  el('stats-yearly-panel').classList.toggle('hidden', !isFullYear);
+  el('stats-month-panel').classList.toggle('hidden', isFullYear);
+  if (isFullYear) renderStatsYearlyMonthlyChart(state.statsSelectedYear);
+  else renderStatsMonthDetail(state.statsSelectedYear, state.statsSelectedMonth);
+}
+
+function renderStatsYearlyMonthlyChart(year) {
+  const counts = new Array(12).fill(0);
+  state.statsEvents.forEach(e => {
+    const d = new Date(e.date);
+    if (d.getFullYear() === year) counts[d.getMonth()]++;
+  });
+  const container = el('stats-yearly-monthly-chart');
+  if (counts.every(c => c === 0)) {
+    container.innerHTML = `<div class="filter-option-empty">No reading logged for ${year} yet.</div>`;
+    return;
+  }
+  const max = Math.max(...counts, 1);
+  container.innerHTML = STATS_MONTH_NAMES.map((m, i) => `
+    <div class="stats-year-col">
+      <span class="stats-year-count">${counts[i] || ''}</span>
+      <div class="stats-year-bar" style="height:${counts[i] ? Math.max((counts[i] / max) * 100, 6) : 2}%"></div>
+      <span class="stats-year-label">${m}</span>
+    </div>
+  `).join('');
+}
+
+// All-time (not scoped to the selected year/month) — a streak is
+// inherently about the continuous span of active reading days, so
+// changing the timeline's year/month picker deliberately doesn't reset it.
+function computeReadingStreaks(events) {
+  const daySet = new Set(events.map(e => (e.date || '').slice(0, 10)).filter(Boolean));
+  if (daySet.size === 0) return { current: 0, longest: 0, totalDays: 0, longestBreak: 0, consistency: 0 };
+
+  const days = [...daySet].map(d => new Date(d)).sort((a, b) => a - b);
+  let longest = 1, run = 1, longestBreak = 0;
+  for (let i = 1; i < days.length; i++) {
+    const diff = Math.round((days[i] - days[i - 1]) / 86400000);
+    if (diff === 1) { run++; longest = Math.max(longest, run); }
+    else { longestBreak = Math.max(longestBreak, diff - 1); run = 1; }
+  }
+  let current = 1;
+  for (let i = days.length - 1; i > 0; i--) {
+    const diff = Math.round((days[i] - days[i - 1]) / 86400000);
+    if (diff === 1) current++; else break;
+  }
+  const totalDays = daySet.size;
+  const spanDays = Math.round((days[days.length - 1] - days[0]) / 86400000) + 1;
+  const consistency = spanDays > 0 ? Math.round((totalDays / spanDays) * 100) : 100;
+  return { current, longest, totalDays, longestBreak, consistency };
+}
+
+function computeWeeklyBreakdown(monthEvents, daysInMonth) {
+  const weeks = [];
+  for (let start = 1; start <= daysInMonth; start += 7) {
+    const end = Math.min(start + 6, daysInMonth);
+    const dayCount = end - start + 1;
+    const count = monthEvents.filter(e => { const d = new Date(e.date).getDate(); return d >= start && d <= end; }).length;
+    weeks.push({ dayCount, count });
+  }
+  return weeks;
+}
+
+function renderHeatmapGrid(monthEvents, daysInMonth) {
+  const countsByDay = {};
+  monthEvents.forEach(e => { const d = new Date(e.date).getDate(); countsByDay[d] = (countsByDay[d] || 0) + 1; });
+  const maxCount = Math.max(...Object.values(countsByDay), 1);
+  const cells = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const c = countsByDay[d] || 0;
+    const level = c > 0 ? Math.min(4, Math.ceil((c / maxCount) * 4)) : 0;
+    cells.push(`<div class="heatmap-cell" data-level="${level}" title="${c} completed on day ${d}">${d}</div>`);
+  }
+  el('stats-heatmap-grid').innerHTML = cells.join('');
+}
+
+function renderMonthlyInsights(monthEvents) {
+  if (monthEvents.length === 0) {
+    el('stats-monthly-insights').innerHTML = `<div class="filter-option-empty">No activity this month</div>`;
+    return;
+  }
+  const byDay = {};
+  const chaptersByDay = {};
+  const bySeries = {};
+  const byGenre = {};
+  monthEvents.forEach(e => {
+    const d = new Date(e.date).getDate();
+    byDay[d] = (byDay[d] || 0) + 1;
+    chaptersByDay[d] = (chaptersByDay[d] || 0) + (e.chapters || 0);
+    bySeries[e.seriesTitle] = (bySeries[e.seriesTitle] || 0) + 1;
+    e.genres.forEach(g => { byGenre[g] = (byGenre[g] || 0) + 1; });
+  });
+  const topDay = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
+  const topChapDay = Object.entries(chaptersByDay).sort((a, b) => b[1] - a[1])[0];
+  const topSeries = Object.entries(bySeries).sort((a, b) => b[1] - a[1])[0];
+  const topGenre = Object.entries(byGenre).sort((a, b) => b[1] - a[1])[0];
+
+  const cards = [
+    { label: 'Most Active Day', value: topDay ? `Day ${topDay[0]} (${topDay[1]} completed)` : '—' },
+    { label: 'Peak Chapters/Day', value: topChapDay && topChapDay[1] ? `${topChapDay[1]} Ch (Day ${topChapDay[0]})` : '—' },
+    { label: 'Most Read Title', value: topSeries ? topSeries[0] : '—' },
+    { label: 'Most Read Genre', value: topGenre ? `${topGenre[0]} (${topGenre[1]}x)` : '—' },
+  ];
+  el('stats-monthly-insights').innerHTML = cards.map(c => `
+    <div class="stats-insight-card">
+      <div class="stats-insight-label">${escapeHTML(c.label)}</div>
+      <div class="stats-insight-value" title="${escapeHTML(c.value)}">${escapeHTML(c.value)}</div>
+    </div>
+  `).join('');
+}
+
+function renderStatsMonthDetail(year, month) {
+  const monthEvents = state.statsEvents.filter(e => {
+    const d = new Date(e.date);
+    return d.getFullYear() === year && (d.getMonth() + 1) === month;
+  });
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const completed = monthEvents.length;
+  const chaptersRead = monthEvents.reduce((sum, e) => sum + (e.chapters || 0), 0);
+  const activeDaySet = new Set(monthEvents.map(e => new Date(e.date).getDate()));
+  const activeDays = activeDaySet.size;
+  const avgChapPerDay = activeDays ? (chaptersRead / activeDays).toFixed(1) : '0.0';
+
+  el('stats-month-overview').innerHTML = `
+    <div class="stats-month-stat-row">
+      <div class="stats-month-stat"><span class="stats-mini-num">${completed}</span><span class="stats-mini-label">Completed</span></div>
+      <div class="stats-month-stat"><span class="stats-mini-num">${chaptersRead}</span><span class="stats-mini-label">Chapters Read</span></div>
+      <div class="stats-month-stat"><span class="stats-mini-num">${activeDays}</span><span class="stats-mini-label">Active Days</span></div>
+    </div>
+    <div class="stats-avg-chap"><span class="stats-avg-chap-num">${avgChapPerDay}</span><span class="stats-avg-chap-label">Avg Chap/Day</span></div>
+  `;
+
+  const streaks = computeReadingStreaks(state.statsEvents);
+  el('stats-streaks').innerHTML = `
+    <div class="stats-streak-title">Reading Consistency <span class="stats-streak-scope">(all-time)</span></div>
+    <div class="stats-streak-row">
+      <div class="stats-streak-stat"><span class="stats-mini-num stats-streak-accent">${streaks.current}d</span><span class="stats-mini-label">Current Streak</span></div>
+      <div class="stats-streak-stat"><span class="stats-mini-num stats-streak-accent">${streaks.longest}d</span><span class="stats-mini-label">Longest Streak</span></div>
+      <div class="stats-streak-stat"><span class="stats-mini-num stats-streak-accent">${streaks.totalDays}d</span><span class="stats-mini-label">Total Active Days</span></div>
+    </div>
+    <div class="stats-streak-row">
+      <div class="stats-streak-stat"><span class="stats-mini-num">${streaks.longestBreak}d</span><span class="stats-mini-label">Longest Break</span></div>
+      <div class="stats-streak-stat"><span class="stats-mini-num">${streaks.consistency}%</span><span class="stats-mini-label">Consistency</span></div>
+    </div>
+  `;
+
+  const weeks = computeWeeklyBreakdown(monthEvents, daysInMonth);
+  el('stats-weekly-breakdown').innerHTML = `
+    <div class="stats-streak-title">Weekly Breakdown</div>
+    ${weeks.map((w, i) => `
+      <div class="stats-week-row">
+        <span class="stats-week-label">Week ${i + 1}</span>
+        <div class="stats-week-track"><div class="stats-week-fill" style="width:${(w.dayCount / 7) * 100}%"></div></div>
+        <span class="stats-week-count">${w.dayCount}d / ${w.count} book${w.count === 1 ? '' : 's'}</span>
+      </div>
+    `).join('')}
+  `;
+
+  renderHeatmapGrid(monthEvents, daysInMonth);
+  renderMonthlyInsights(monthEvents);
+}
+
+// ── Reading Profile Radar (genre "DNA") ──────────────────────────────────
+
+function renderStatsRadar(allSeries) {
+  const counts = {};
+  allSeries.forEach(s => s.genres.forEach(g => { counts[g.name] = (counts[g.name] || 0) + 1; }));
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const svg = el('stats-radar-svg');
+
+  if (entries.length < 3) {
+    svg.parentElement.innerHTML = `<div class="filter-option-empty">Tag a few more genres on your titles to see your reading profile.</div>`;
+    return;
+  }
+
+  const n = entries.length;
+  const max = entries[0][1];
+  const cx = 160, cy = 150, r = 105;
+  const angleFor = (i) => (Math.PI * 2 * i) / n - Math.PI / 2;
+
+  const rings = [0.25, 0.5, 0.75, 1].map(frac => {
+    const pts = entries.map((_, i) => {
+      const a = angleFor(i);
+      return `${(cx + Math.cos(a) * r * frac).toFixed(1)},${(cy + Math.sin(a) * r * frac).toFixed(1)}`;
+    });
+    return `<polygon points="${pts.join(' ')}" class="stats-radar-ring" />`;
+  }).join('');
+
+  const axes = entries.map((_, i) => {
+    const a = angleFor(i);
+    return `<line x1="${cx}" y1="${cy}" x2="${(cx + Math.cos(a) * r).toFixed(1)}" y2="${(cy + Math.sin(a) * r).toFixed(1)}" class="stats-radar-axis" />`;
+  }).join('');
+
+  const dataPts = entries.map(([, count], i) => {
+    const a = angleFor(i);
+    const frac = max ? count / max : 0;
+    return `${(cx + Math.cos(a) * r * frac).toFixed(1)},${(cy + Math.sin(a) * r * frac).toFixed(1)}`;
+  });
+  const dataPolygon = `<polygon points="${dataPts.join(' ')}" class="stats-radar-data" />`;
+  const dataDots = entries.map(([, count], i) => {
+    const a = angleFor(i);
+    const frac = max ? count / max : 0;
+    return `<circle cx="${(cx + Math.cos(a) * r * frac).toFixed(1)}" cy="${(cy + Math.sin(a) * r * frac).toFixed(1)}" r="3" class="stats-radar-dot" />`;
+  }).join('');
+
+  const labels = entries.map(([name], i) => {
+    const a = angleFor(i);
+    const lx = cx + Math.cos(a) * (r + 28);
+    const ly = cy + Math.sin(a) * (r + 28);
+    const anchor = Math.cos(a) > 0.3 ? 'start' : (Math.cos(a) < -0.3 ? 'end' : 'middle');
+    return `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle" class="stats-radar-label">${escapeHTML(name)}</text>`;
+  }).join('');
+
+  svg.innerHTML = rings + axes + dataPolygon + dataDots + labels;
+}
+
+// ── Status / genre / rating / year breakdowns ────────────────────────────
+
+// Shared by the status/genre bar lists below — renders a labelled,
+// color-filled horizontal bar per entry, scaled relative to the largest
+// count in the set so the biggest bucket always reads as "full".
+function renderStatsBarList(containerId, entries, { emptyMessage, colorFor = () => 'var(--primary)' } = {}) {
+  const container = el(containerId);
+  if (entries.length === 0) {
+    container.innerHTML = `<div class="filter-option-empty">${emptyMessage}</div>`;
+    return;
+  }
+  const max = entries[0][1];
+  container.innerHTML = entries.map(([name, count]) => `
+    <div class="stats-bar-row">
+      <span class="stats-bar-label" title="${escapeHTML(name)}">${escapeHTML(name)}</span>
+      <div class="stats-bar-track"><div class="stats-bar-fill" style="width:${Math.max((count / max) * 100, 4)}%; background:${colorFor(name)}"></div></div>
+      <span class="stats-bar-count">${count}</span>
+    </div>
+  `).join('');
+}
+
+function renderStatsStatusBreakdown(list) {
+  const counts = {};
+  list.forEach(s => { const name = s.status || 'Unknown'; counts[name] = (counts[name] || 0) + 1; });
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  renderStatsBarList('stats-status-bars', entries, {
+    emptyMessage: 'No data yet',
+    colorFor: statusColor,
+  });
+}
+
+function renderStatsGenreBreakdown(list) {
+  const counts = {};
+  const colors = {};
+  list.forEach(s => s.genres.forEach(g => {
+    counts[g.name] = (counts[g.name] || 0) + 1;
+    colors[g.name] = g.color;
+  }));
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  renderStatsBarList('stats-genre-bars', entries, {
+    emptyMessage: 'No genres tagged yet',
+    colorFor: (name) => colors[name] || 'var(--accent)',
+  });
+}
+
+function renderStatsRatingDistribution(list) {
+  const counts = [0, 0, 0, 0, 0]; // index 0 = 1 star … index 4 = 5 stars
+  list.forEach(s => { if (s.rating >= 1 && s.rating <= 5) counts[s.rating - 1]++; });
+  const entries = [5, 4, 3, 2, 1].map(n => [`${'★'.repeat(n)}${'☆'.repeat(5 - n)}`, counts[n - 1]]);
+  if (entries.every(([, count]) => count === 0)) {
+    el('stats-rating-bars').innerHTML = `<div class="filter-option-empty">No titles rated yet</div>`;
+    return;
+  }
+  const max = Math.max(...counts, 1);
+  el('stats-rating-bars').innerHTML = entries.map(([label, count]) => `
+    <div class="stats-bar-row">
+      <span class="stats-bar-label">${label}</span>
+      <div class="stats-bar-track"><div class="stats-bar-fill" style="width:${count ? Math.max((count / max) * 100, 4) : 0}%"></div></div>
+      <span class="stats-bar-count">${count}</span>
+    </div>
+  `).join('');
+}
+
+function renderStatsYearChart(list) {
+  const counts = {};
+  list.forEach(s => {
+    if (!s.date_finished) return;
+    const year = new Date(s.date_finished).getFullYear();
+    if (!year || isNaN(year)) return;
+    counts[year] = (counts[year] || 0) + 1;
+  });
+  const years = Object.keys(counts).map(Number).sort((a, b) => a - b);
+  const container = el('stats-year-chart');
+  if (years.length === 0) {
+    container.innerHTML = `<div class="filter-option-empty">No finish dates logged yet — set "Date Finished" on a title to see it here.</div>`;
+    return;
+  }
+  const max = Math.max(...years.map(y => counts[y]));
+  container.innerHTML = years.map(y => `
+    <div class="stats-year-col">
+      <span class="stats-year-count">${counts[y]}</span>
+      <div class="stats-year-bar" style="height:${Math.max((counts[y] / max) * 100, 6)}%"></div>
+      <span class="stats-year-label">${y}</span>
+    </div>
+  `).join('');
+}
+
 
 // ─── Series Groups (Umbrella Groups / Shared Universes) ─────────────────────
 // The markup and CSS for this (collapsible umbrella cards on the library
