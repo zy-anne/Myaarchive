@@ -61,4 +61,17 @@ async function verifyPassword(db, userId, password) {
     return bcrypt.compare(password || '', row.password_hash);
 }
 
-module.exports = { ensureUsersTable, signUp, signIn, userExists, verifyPassword };
+// The only supported way to change a password post sign-up (previously
+// none existed short of editing the users table directly). Requires the
+// current password, same "re-verify even though already signed in" gate
+// as verifyPassword is used for elsewhere.
+async function changePassword(db, userId, currentPassword, newPassword) {
+    if (!newPassword || newPassword.length < 4) throw new Error('New password must be at least 4 characters');
+    const ok = await verifyPassword(db, userId, currentPassword);
+    if (!ok) throw new Error('Current password is incorrect');
+    const hash = await bcrypt.hash(newPassword, 10);
+    await db.execute({ sql: 'UPDATE users SET password_hash = ? WHERE id = ?', args: [hash, userId] });
+    return true;
+}
+
+module.exports = { ensureUsersTable, signUp, signIn, userExists, verifyPassword, changePassword };

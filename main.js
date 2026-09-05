@@ -14,7 +14,7 @@ require('dotenv').config({
 // Line 14 in main.js:
 const { createDesktopClient, removeLocalReplicaFiles } = require('./data-layer/client');
 const dataLayer = require('./data-layer');
-const { ensureUsersTable, signUp, signIn, userExists, verifyPassword } = require('./auth/localAuth.js');
+const { ensureUsersTable, signUp, signIn, userExists, verifyPassword, changePassword } = require('./auth/localAuth.js');
 const { createR2Client, makeKey, uploadBuffer, deleteObject, downloadBuffer } = require('./storage/r2');
 const { getOrDownload, evictIfOverLimit } = require('./storage/cache');
 
@@ -238,7 +238,21 @@ function requireUser() {
   return currentUser.id;
 }
 
-// ─── IPC: Account (Danger Zone) ─────────────────────────────────────────
+// ─── IPC: Account (Change Password & Danger Zone) ───────────────────────
+// Change Password is the only supported way to update a password
+// post sign-up — previously there was no path short of editing the users
+// table directly. Re-verifies the current password even though the
+// person is already signed in, same rationale as account:delete below.
+handle('account:changePassword', async (_, currentPassword, newPassword) => {
+  const userId = requireUser();
+  try {
+    await changePassword(db, userId, currentPassword, newPassword);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 // Permanently deletes the signed-in account and every row it owns. Gated
 // behind a fresh password check (see auth/localAuth.js#verifyPassword)
 // even though the person is already signed in — the confirmation typed in

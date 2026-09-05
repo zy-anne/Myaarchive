@@ -782,7 +782,7 @@
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label>Cover Image <span class="optional">(optional, max 5MB)</span></label>
+          <label>Cover Image <span class="optional">(optional, max 10MB)</span></label>
           <div class="img-picker" id="vol-cover-picker" data-target="f-v-cover">
             <div class="img-preview" id="vol-cover-preview"><span>Click to add cover</span></div>
           </div>
@@ -860,7 +860,7 @@
       </div>
       <div class="modal-body">
         <div class="form-group form-centered">
-          <div class="img-picker img-circle" id="char-img-picker" data-target="f-c-img" title="Max 5MB">
+          <div class="img-picker img-circle" id="char-img-picker" data-target="f-c-img" title="Max 10MB">
             <div class="img-preview circular" id="char-img-preview"><span>Photo</span></div>
           </div>
           <input type="hidden" id="f-c-img">
@@ -1267,6 +1267,14 @@
               Log Out
             </button>
           </div>
+
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <div class="settings-row-label">Password</div>
+              <div class="settings-row-desc">Change the password used to sign in on this device.</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-open-change-password">Change Password…</button>
+          </div>
         </div>
 
         <!-- Layout & Navigation -->
@@ -1327,6 +1335,35 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-primary" data-close="overlay-user-settings">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div class="overlay hidden" id="overlay-change-password">
+    <div class="modal modal-sm" id="modal-change-password">
+      <div class="modal-header">
+        <h2>Change Password</h2>
+        <button class="close-btn" data-close="overlay-change-password">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="f-change-password-current">Current Password</label>
+          <input id="f-change-password-current" type="password" autocomplete="current-password">
+        </div>
+        <div class="form-group">
+          <label for="f-change-password-new">New Password</label>
+          <input id="f-change-password-new" type="password" autocomplete="new-password" maxlength="200">
+        </div>
+        <div class="form-group">
+          <label for="f-change-password-confirm">Confirm New Password</label>
+          <input id="f-change-password-confirm" type="password" autocomplete="new-password" maxlength="200">
+        </div>
+        <p class="form-hint" id="change-password-error"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-change-password">Cancel</button>
+        <button class="btn btn-primary" id="btn-confirm-change-password" disabled>Update Password</button>
       </div>
     </div>
   </div>

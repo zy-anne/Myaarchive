@@ -533,6 +533,63 @@ async function handleSignOut() {
   state.libraries = [];
 }
 
+// ─── Account: Change Password ───────────────────────────────────────────
+// The only supported way to change a password post sign-up — previously
+// there was no path short of editing the users table directly. Opens from
+// inside User Settings, same stacking pattern as Delete Account below.
+// The submit button stays disabled until all three fields are
+// individually valid, mirroring updateDeleteAccountButtonState's
+// disabled-until-valid approach.
+
+function openChangePasswordModal() {
+  el('f-change-password-current').value = '';
+  el('f-change-password-new').value = '';
+  el('f-change-password-confirm').value = '';
+  el('change-password-error').textContent = '';
+  el('btn-confirm-change-password').disabled = true;
+  openModal('overlay-change-password');
+  el('f-change-password-current').focus();
+}
+
+function updateChangePasswordButtonState() {
+  const current = el('f-change-password-current').value;
+  const next = el('f-change-password-new').value;
+  const confirm = el('f-change-password-confirm').value;
+  const valid = current.length > 0 && next.length >= 4 && next === confirm;
+  el('btn-confirm-change-password').disabled = !valid;
+}
+
+async function handleChangePasswordSubmit() {
+  const current = el('f-change-password-current').value;
+  const next = el('f-change-password-new').value;
+  const confirm = el('f-change-password-confirm').value;
+  const btn = el('btn-confirm-change-password');
+  const errorEl = el('change-password-error');
+  errorEl.textContent = '';
+
+  if (next !== confirm) {
+    errorEl.textContent = "New passwords don't match";
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Updating…';
+  try {
+    const result = await window.api.account.changePassword(current, next);
+    if (!result.ok) {
+      errorEl.textContent = result.error || 'Could not update password';
+      return;
+    }
+    toast('Password updated');
+    closeModal('overlay-change-password');
+  } catch (e) {
+    errorEl.textContent = e.message || 'Could not update password';
+  } finally {
+    btn.textContent = 'Update Password';
+    updateChangePasswordButtonState();
+  }
+}
+
 // ─── Danger Zone: Delete Account ───────────────────────────────────────────
 // Two-part confirmation before this ever reaches the IPC layer: the person
 // must type their own username exactly (a "you meant to click this" guard
@@ -623,6 +680,13 @@ function bindEvents() {
   el('btn-open-settings')?.addEventListener('click', openUserSettingsModal);
   el('btn-settings-signout')?.addEventListener('click', handleSignOut);
   el('btn-auth-signout')?.addEventListener('click', handleSignOut);
+
+  // Change Password
+  el('btn-open-change-password')?.addEventListener('click', openChangePasswordModal);
+  el('f-change-password-current')?.addEventListener('input', updateChangePasswordButtonState);
+  el('f-change-password-new')?.addEventListener('input', updateChangePasswordButtonState);
+  el('f-change-password-confirm')?.addEventListener('input', updateChangePasswordButtonState);
+  el('btn-confirm-change-password')?.addEventListener('click', handleChangePasswordSubmit);
 
   // Danger Zone: Delete Account
   el('btn-open-delete-account')?.addEventListener('click', openDeleteAccountModal);

@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   account: {
     delete: (password) => invoke('account:delete', password),
+    changePassword: (currentPassword, newPassword) => invoke('account:changePassword', currentPassword, newPassword),
   },
   series: {
     getAll: (f) => invoke('series:getAll', f),
