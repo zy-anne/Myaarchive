@@ -23,6 +23,22 @@ let db;                 // libSQL client (Turso embedded replica)
 let s3;                 // R2 client
 let currentUser = null; // { id, username } — set after successful local sign-in/sign-up
 
+// Covers, portraits, nav icons, and gallery images all go through
+// files:saveImage below, regardless of category — capping size here keeps
+// a mis-click (e.g. picking a multi-megapixel camera-original photo) from
+// ballooning the shared R2 bucket. Checked via fs.statSync BEFORE
+// fs.readFileSync, so an oversized file is rejected without ever being
+// read into memory. Keep this in sync with the "max 10MB" copy in
+// index.html's cover/portrait/icon picker labels if it ever changes.
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+// File attachments (PDFs, notes, ebooks, etc. — see attachments:add below)
+// are a separate, larger cap since a legitimate scanned PDF can run tens
+// of MB, but this still stops something like a video or disk image from
+// silently landing in the shared R2 bucket. Keep in sync with the "max
+// 100MB" hint under the Files tab's "+ Add File" button in index.html.
+const MAX_ATTACHMENT_SIZE_BYTES = 100 * 1024 * 1024;
+const formatMB = (bytes) => `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+
 const getImagesPath = () => path.join(app.getPath('userData'), 'images'); // legacy local images — see note in files:getImageData
 const getAttachmentsPath = () => path.join(app.getPath('userData'), 'attachments'); // legacy local attachments
 const getCacheDir = () => path.join(app.getPath('userData'), 'asset-cache'); // downloaded-from-R2 cache
@@ -399,6 +415,10 @@ ipcMain.handle('attachments:openDialog', async () => {
 });
 handle('attachments:add', async (_, seriesId, sourcePath) => {
   if (!sourcePath || !fs.existsSync(sourcePath)) return null;
+  const { size } = fs.statSync(sourcePath);
+  if (size > MAX_ATTACHMENT_SIZE_BYTES) {
+    throw new Error(`File is too large (${formatMB(size)}) — max ${formatMB(MAX_ATTACHMENT_SIZE_BYTES)}`);
+  }
   const originalName = path.basename(sourcePath);
   const buffer = fs.readFileSync(sourcePath);
   const key = makeKey(`attachments/${seriesId}`, sourcePath);
@@ -443,6 +463,10 @@ ipcMain.handle('files:openImagesDialog', async () => {
 });
 ipcMain.handle('files:saveImage', async (_, sourcePath, category) => {
   if (!sourcePath || !fs.existsSync(sourcePath)) return null;
+  const { size } = fs.statSync(sourcePath);
+  if (size > MAX_IMAGE_SIZE_BYTES) {
+    throw new Error(`Image is too large (${formatMB(size)}) — max ${formatMB(MAX_IMAGE_SIZE_BYTES)}`);
+  }
   const buffer = fs.readFileSync(sourcePath);
   const key = makeKey(category, sourcePath);
   const ext = path.extname(sourcePath).slice(1).toLowerCase();
@@ -501,17 +525,4 @@ handle('export:json', async () => {
   const data = { exportedAt: new Date().toISOString(), version: 2, libraries, series, volumes, characters, relationships, gallery_images: galleryImages, attachments };
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
   return true;
-});
-
-ipcMain.handle('export:pdf', async () => {
-  const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: `reading-log-${new Date().toISOString().slice(0, 10)}.pdf`,
-    filters: [{ name: 'PDF', extensions: ['pdf'] }],
-  });
-  if (canceled || !filePath) return false;
-  try {
-    const pdf = await mainWindow.webContents.printToPDF({ printBackground: true, margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 } });
-    fs.writeFileSync(filePath, pdf);
-    return true;
-  } catch (e) { console.error(e); return false; }
 });

@@ -4339,6 +4339,7 @@ a,
   align-items: baseline;
   gap: 8px;
   flex-wrap: wrap;
+  margin-bottom: var(--sp-2);
 }
 
 .stats-milestone-num {
@@ -4378,6 +4379,7 @@ a,
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   overflow: hidden;
+  margin-bottom: var(--sp-3);
 }
 
 .stats-progress-fill {

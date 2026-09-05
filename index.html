@@ -351,6 +351,7 @@
           <!-- Files Tab -->
           <div id="pane-files" class="tab-pane hidden">
             <div class="pane-toolbar">
+              <span class="form-hint" style="margin-right:auto;">Max 100MB per file</span>
               <button class="btn btn-primary btn-sm" id="btn-add-file">+ Add File</button>
             </div>
             <div id="files-list" class="files-list"></div>
@@ -781,7 +782,7 @@
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label>Cover Image <span class="optional">(optional, max 10MB)</span></label>
+          <label>Cover Image <span class="optional">(optional, max 5MB)</span></label>
           <div class="img-picker" id="vol-cover-picker" data-target="f-v-cover">
             <div class="img-preview" id="vol-cover-preview"><span>Click to add cover</span></div>
           </div>
@@ -859,7 +860,7 @@
       </div>
       <div class="modal-body">
         <div class="form-group form-centered">
-          <div class="img-picker img-circle" id="char-img-picker" data-target="f-c-img" title="Max 10MB">
+          <div class="img-picker img-circle" id="char-img-picker" data-target="f-c-img" title="Max 5MB">
             <div class="img-preview circular" id="char-img-preview"><span>Photo</span></div>
           </div>
           <input type="hidden" id="f-c-img">
@@ -1071,7 +1072,7 @@
           <label>Icon</label>
           <div class="icon-swatch-grid" id="icon-swatch-grid"></div>
           <div class="icon-upload-row">
-            <div class="img-picker icon-upload-picker" id="nav-icon-picker" title="Max 10MB">
+            <div class="img-picker icon-upload-picker" id="nav-icon-picker" title="Max 5MB">
               <div class="img-preview" id="nav-icon-upload-preview"><span>Upload custom icon</span></div>
             </div>
             <input type="hidden" id="f-lib-icon-image">

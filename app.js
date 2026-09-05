@@ -1021,7 +1021,7 @@ function bindEvents() {
     const paths = await window.api.files.openImagesDialog();
     if (paths && paths.length > 0) await addGalleryImages(paths);
   });
-  setupMultiDropZone(dom.galleryGrid, addGalleryImages, isImageFile);
+  setupMultiDropZone(dom.galleryGrid, addGalleryImages, { fileFilter: isImageFile, maxSizeBytes: MAX_IMAGE_SIZE_BYTES });
   el('btn-save-gallery-caption').addEventListener('click', async () => {
     const caption = el('f-gallery-caption').value.trim();
     await window.api.gallery.updateCaption(state.currentGalleryImage.id, caption);
@@ -1043,7 +1043,7 @@ function bindEvents() {
     const paths = await window.api.attachments.openDialog();
     if (paths && paths.length > 0) await addAttachmentFiles(paths);
   });
-  setupMultiDropZone(dom.filesList, addAttachmentFiles);
+  setupMultiDropZone(dom.filesList, addAttachmentFiles, { maxSizeBytes: MAX_ATTACHMENT_SIZE_BYTES });
 
   // Relationship Actions
   el('btn-add-rel-drawer').addEventListener('click', () => openRelModal());
@@ -1123,6 +1123,15 @@ function closeModal(id) {
 const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 const isImageFile = (file) => IMAGE_EXTS.includes((file.name.split('.').pop() || '').toLowerCase());
 
+// Keep in sync with MAX_IMAGE_SIZE_BYTES / MAX_ATTACHMENT_SIZE_BYTES in
+// main.js — those are the actual enforced limits (files:saveImage and
+// attachments:add reject oversized files regardless of how they got
+// picked); these are just same-value client-side shortcuts so a
+// drag-and-drop of an oversized file gets an instant toast instead of
+// silently reading the whole file before a round trip rejects it.
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_ATTACHMENT_SIZE_BYTES = 100 * 1024 * 1024;
+
 // Wires a single-image drop target (a cover/portrait/icon picker). onFilePath
 // receives the resolved absolute path of the first valid dropped image.
 function setupImageDropZone(zoneEl, onFilePath) {
@@ -1136,14 +1145,20 @@ function setupImageDropZone(zoneEl, onFilePath) {
     zoneEl.classList.remove('drag-over');
     const file = Array.from(e.dataTransfer.files).find(isImageFile);
     if (!file) return toast('Drop an image file (jpg, png, gif, webp)', true);
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      return toast(`Image is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB) — max ${(MAX_IMAGE_SIZE_BYTES / (1024 * 1024)).toFixed(0)}MB`, true);
+    }
     const path = window.api.files.getPathForFile(file);
     if (path) await onFilePath(path);
   });
 }
 
 // Wires a multi-file drop target (gallery grid, files list). onFilePaths
-// receives all resolved absolute paths, pre-filtered if a filter is given.
-function setupMultiDropZone(zoneEl, onFilePaths, fileFilter = null) {
+// receives the resolved absolute paths of every file that passes
+// fileFilter (if given) and maxSizeBytes (if given) — anything oversized
+// is rejected right here with a toast, before ever being read or sent
+// over IPC, since a dropped File's .size is free to check client-side.
+function setupMultiDropZone(zoneEl, onFilePaths, { fileFilter = null, maxSizeBytes = null } = {}) {
   zoneEl.addEventListener('dragover', (e) => {
     e.preventDefault();
     zoneEl.classList.add('drag-over');
@@ -1155,6 +1170,20 @@ function setupMultiDropZone(zoneEl, onFilePaths, fileFilter = null) {
     let files = Array.from(e.dataTransfer.files);
     if (fileFilter) files = files.filter(fileFilter);
     if (files.length === 0) return;
+
+    let tooBig = [];
+    if (maxSizeBytes) {
+      tooBig = files.filter(f => f.size > maxSizeBytes);
+      files = files.filter(f => f.size <= maxSizeBytes);
+    }
+    if (tooBig.length > 0) {
+      const maxLabel = `${(maxSizeBytes / (1024 * 1024)).toFixed(0)}MB`;
+      toast(tooBig.length === 1
+        ? `"${tooBig[0].name}" is too large — max ${maxLabel}`
+        : `${tooBig.length} files were too large — max ${maxLabel}`, true);
+    }
+    if (files.length === 0) return;
+
     const paths = files.map(f => window.api.files.getPathForFile(f)).filter(Boolean);
     if (paths.length > 0) await onFilePaths(paths);
   });
