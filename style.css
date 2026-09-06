@@ -4933,3 +4933,30 @@ a,
   background: var(--accent, #e53935);
   color: #fff;
 }
+
+.hero-quick-date-btn {
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+}
+
+.hero-quick-date-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.hero-extra-value-editable {
+  cursor: pointer;
+  border-bottom: 1px dashed var(--border);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.hero-extra-value-editable:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.hero-extra-date-input {
+  width: auto;
+  padding: 2px 6px;
+  font-size: 13px;
+}

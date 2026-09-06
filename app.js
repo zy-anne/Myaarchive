@@ -2721,12 +2721,23 @@ function renderSeriesHero(s) {
         <div class="hero-status-row">
           <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span>
           ${s.kind === 'standalone' ? `<span class="kind-badge">Standalone</span>` : ''}
+          ${!s.date_started ? `<button type="button" class="btn btn-ghost btn-sm hero-quick-date-btn" id="btn-mark-started">+ Mark Started Today</button>` : ''}
+          ${!s.date_finished ? `<button type="button" class="btn btn-ghost btn-sm hero-quick-date-btn" id="btn-mark-finished">+ Mark Finished Today</button>` : ''}
         </div>
         <h2 class="hero-title">${escapeHTML(s.title)}</h2>
         <div class="hero-author"><strong>Author:</strong> ${escapeHTML(s.author || '-')}</div>
       </div>
     </div>
   `;
+
+  el('btn-mark-started')?.addEventListener('click', async () => {
+    await quickUpdateSeriesField('date_started', todayISODate());
+    toast('Marked as started today');
+  });
+  el('btn-mark-finished')?.addEventListener('click', async () => {
+    await quickUpdateSeriesField('date_finished', todayISODate());
+    toast('Marked as finished today');
+  });
 
   // Fetch and display image if a key is present
   fillCoverImages(dom.heroTop);
@@ -2785,9 +2796,9 @@ function renderHeroExtraDetails(s) {
   const items = [];
   if (s.rating) items.push({ label: 'Rating', starRating: s.rating });
   if (s.book_type) items.push({ label: 'Book Type', value: s.book_type });
-  if (s.standalone_chapter_count) items.push({ label: 'Chapters', value: s.standalone_chapter_count });
-  if (s.date_started) items.push({ label: 'Date Started', value: formatDate(s.date_started) });
-  if (s.date_finished) items.push({ label: 'Date Finished', value: formatDate(s.date_finished) });
+  if (s.kind === 'standalone' && s.standalone_chapter_count) items.push({ label: 'Chapter Count', value: s.standalone_chapter_count });
+  if (s.date_started) items.push({ label: 'Date Started', value: formatDate(s.date_started), editableDateField: 'date_started', rawDate: s.date_started });
+  if (s.date_finished) items.push({ label: 'Date Finished', value: formatDate(s.date_finished), editableDateField: 'date_finished', rawDate: s.date_finished });
   if (s.artist) items.push({ label: 'Artist(s)', value: s.artist });
   if (s.year_published) items.push({ label: 'Year Published', value: s.year_published });
   if (s.original_language) items.push({ label: 'Original Language', value: s.original_language });
@@ -2808,12 +2819,40 @@ function renderHeroExtraDetails(s) {
       <span class="hero-field-label">${escapeHTML(item.label)}</span>
       ${item.starRating
       ? `<div class="hero-extra-value rating-stars readonly" data-stars="${item.starRating}"></div>`
-      : `<span class="hero-extra-value">${escapeHTML(item.value)}</span>`}
+      : item.editableDateField
+        ? `<span class="hero-extra-value hero-extra-value-editable" data-date-field="${item.editableDateField}" data-raw-date="${item.rawDate}" title="Click to change">${escapeHTML(item.value)} ✎</span>`
+        : `<span class="hero-extra-value">${escapeHTML(item.value)}</span>`}
     </div>
   `).join('');
 
   grid.querySelectorAll('.rating-stars[data-stars]').forEach(elm => {
     renderRatingStars(elm, parseInt(elm.dataset.stars), { readonly: true });
+  });
+
+  // Click a date value to swap it for a live date picker in place —
+  // avoids opening the full Edit modal just to nudge a date by a day.
+  grid.querySelectorAll('.hero-extra-value-editable').forEach(span => {
+    span.addEventListener('click', () => {
+      const field = span.dataset.dateField;
+      const input = document.createElement('input');
+      input.type = 'date';
+      input.className = 'hero-extra-date-input';
+      input.value = span.dataset.rawDate || '';
+      span.replaceWith(input);
+      input.focus();
+
+      const commit = async () => {
+        const newValue = input.value || null;
+        await quickUpdateSeriesField(field, newValue);
+        toast('Date updated');
+      };
+      input.addEventListener('change', commit);
+      input.addEventListener('blur', () => {
+        // If nothing changed, just restore the original span rather than
+        // re-fetching from the server for a no-op edit.
+        if (input.value === (span.dataset.rawDate || '')) input.replaceWith(span);
+      });
+    });
   });
 }
 
@@ -2841,6 +2880,56 @@ function openStandaloneThoughtsModal() {
   openModal('overlay-standalone-thoughts');
   refreshCharCounters('f-standalone-thoughts', 'f-standalone-chapter-notes');
   el('f-standalone-thoughts').focus();
+}
+
+// Applies a single-field change to the current series without needing the
+// full Edit modal. Builds the same complete payload seriesUpdate expects
+// (every column, since it's a full-row UPDATE — see data-layer/index.js)
+// from the existing series object, just overriding one field. Used by the
+// quick "Mark Started/Finished Today" buttons and the inline date editor
+// below, so neither has to duplicate this field list.
+async function quickUpdateSeriesField(field, value) {
+  const s = state.currentSeries;
+  const d = {
+    title: s.title,
+    author: s.author,
+    status: s.status,
+    synopsis: s.synopsis,
+    tags: s.tags.map(t => t.name),
+    genres: s.genres.map(g => g.name),
+    content_warnings: s.content_warnings.map(w => w.name),
+    library_id: s.library_id,
+    kind: s.kind,
+    overall_thoughts: s.overall_thoughts,
+    chapter_thoughts: s.chapter_thoughts,
+    cover_image_path: s.cover_image_path,
+    rating: s.rating || 0,
+    book_type: s.book_type,
+    date_started: s.date_started,
+    date_finished: s.date_finished,
+    artist: s.artist,
+    year_published: s.year_published,
+    original_language: s.original_language,
+    country_of_origin: s.country_of_origin,
+    language_read: s.language_read,
+    status_country_of_origin: s.status_country_of_origin,
+    licensed_english: s.licensed_english,
+    completely_translated: s.completely_translated,
+    original_publisher: s.original_publisher,
+    english_publisher: s.english_publisher,
+    is_nsfw: s.is_nsfw,
+    standalone_chapter_count: s.standalone_chapter_count,
+    [field]: value,
+  };
+  await window.api.series.update(s.id, d);
+  await loadSeriesData(s.id);
+}
+
+// Today's date as YYYY-MM-DD, matching what <input type="date"> stores.
+function todayISODate() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 async function saveStandaloneThoughts() {
