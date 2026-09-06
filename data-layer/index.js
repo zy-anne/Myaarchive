@@ -569,19 +569,19 @@ async function charactersGet(db, id) { return one(db, `SELECT * FROM characters 
 async function charactersCreate(db, d) {
   const r = await run(db, `
     INSERT INTO characters (series_id, name, role, volume_appearances, notes, profile_image_path,
-                            status_role, overall_vibes, appears_vs_reality, personality)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            status_role, overall_vibes, appears_text, reality_text, personality)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [d.series_id, d.name, d.role || 'Side', d.volume_appearances || null, d.notes || null, d.profile_image_path || null,
-  d.status_role || null, d.overall_vibes || null, d.appears_vs_reality || null, d.personality || null]);
+  d.status_role || null, d.overall_vibes || null, d.appears_text || null, d.reality_text || null, d.personality || null]);
   return Number(r.lastInsertRowid);
 }
 async function charactersUpdate(db, id, d) {
   await run(db, `
     UPDATE characters SET name=?, role=?, volume_appearances=?, notes=?, profile_image_path=?,
-      status_role=?, overall_vibes=?, appears_vs_reality=?, personality=?
+      status_role=?, overall_vibes=?, appears_text=?, reality_text=?, personality=?
     WHERE id=?
   `, [d.name, d.role || 'Side', d.volume_appearances || null, d.notes || null, d.profile_image_path || null,
-  d.status_role || null, d.overall_vibes || null, d.appears_vs_reality || null, d.personality || null, id]);
+  d.status_role || null, d.overall_vibes || null, d.appears_text || null, d.reality_text || null, d.personality || null, id]);
   return true;
 }
 async function charactersDelete(db, id) { await run(db, `DELETE FROM characters WHERE id = ?`, [id]); return true; }
@@ -1239,10 +1239,12 @@ async function ensureVolumesExtraColumns(db) {
 }
 
 const CHARACTER_EXTRA_FIELDS = [
-  ['status_role', 'TEXT'],           // e.g. "Emperor | Newly crowned emperor who…"
-  ['overall_vibes', 'TEXT'],         // e.g. "Cold, dangerous, suspicious…"
-  ['appears_vs_reality', 'TEXT'],    // e.g. "Appears: … / Reality: …"
-  ['personality', 'TEXT'],           // e.g. "⭐ cold-blooded, ruthless…"
+  ['status_role', 'TEXT'],
+  ['overall_vibes', 'TEXT'],
+  ['appears_vs_reality', 'TEXT'],
+  ['appears_text', 'TEXT'],
+  ['reality_text', 'TEXT'],
+  ['personality', 'TEXT'],
 ];
 
 async function ensureCharacterExtraColumns(db) {

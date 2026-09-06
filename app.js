@@ -207,6 +207,8 @@ function initCharCounters() {
   wireCharCounter('f-v-notes', 20000);
   wireCharCounter('f-c-name', 200);
   wireCharCounter('f-c-vols', 300);
+  wireCharCounter('f-c-appears', 2000);
+  wireCharCounter('f-c-reality', 2000);
   wireCharCounter('f-c-notes', 10000);
   wireCharCounter('f-r-label', 100);
   wireCharCounter('f-r-notes', 2000);
@@ -2786,14 +2788,6 @@ function renderHeroDetailsColumns(s) {
       </div>
     `);
   }
-  if (s.synopsis) {
-    leftParts.push(`
-      <div class="hero-field">
-        <span class="hero-field-label">Synopsis</span>
-        <div class="hero-synopsis">${nl2br(s.synopsis)}</div>
-      </div>
-    `);
-  }
   if (s.content_warnings && s.content_warnings.length) {
     leftParts.push(`
       <div class="hero-field">
@@ -2812,6 +2806,15 @@ function renderHeroDetailsColumns(s) {
       </div>
     `);
   }
+  if (s.synopsis) {
+    leftParts.push(`
+      <div class="hero-field">
+        <span class="hero-field-label">Synopsis</span>
+        <div class="hero-synopsis">${nl2br(s.synopsis)}</div>
+      </div>
+    `);
+  }
+
 
   dom.heroDetailsRight.innerHTML = leftParts.length
     ? leftParts.join('')
@@ -2819,7 +2822,6 @@ function renderHeroDetailsColumns(s) {
 
   const items = [];
   if (s.rating) items.push({ label: 'Rating', starRating: s.rating });
-  items.push({ label: 'Status', statusBadge: s.status });
   if (s.kind === 'standalone' && s.standalone_chapter_count) items.push({ label: 'Chapter Count', value: s.standalone_chapter_count });
   if (s.book_type) items.push({ label: 'Book Type', value: s.book_type });
   if (s.date_started) items.push({ label: 'Date Started', value: formatDate(s.date_started), editableDateField: 'date_started', rawDate: s.date_started });
@@ -4034,9 +4036,19 @@ async function applyCharImgFile(sourcePath) {
   }
 }
 
-function formatAppearsVsReality(text) {
-  if (!text) return '';
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+// Renders the two separate fields as labeled blocks. Falls back to
+// best-effort formatting of legacy combined text (old accounts/characters
+// that predate the appears_text/reality_text split) so nothing already
+// saved just disappears from the drawer.
+function formatAppearsVsReality(c) {
+  if (c.appears_text || c.reality_text) {
+    const parts = [];
+    if (c.appears_text) parts.push(`<p class="lore-contrast-line"><strong>Appears:</strong> ${nl2br(c.appears_text)}</p>`);
+    if (c.reality_text) parts.push(`<p class="lore-contrast-line"><strong>Reality:</strong> ${nl2br(c.reality_text)}</p>`);
+    return parts.join('');
+  }
+  if (!c.appears_vs_reality) return '';
+  const lines = c.appears_vs_reality.split('\n').map(l => l.trim()).filter(Boolean);
   return lines.map(line => {
     const match = line.match(/^(Appears|Reality|Facade|Truth|Public|Private|Outer|Inner):\s*(.*)$/i);
     if (match) {
@@ -4062,7 +4074,21 @@ function openCharModal(char = null) {
   applyCharVolsFieldLabel();
   el('f-c-status-role').value = char?.status_role || '';
   el('f-c-overall-vibes').value = char?.overall_vibes || '';
-  el('f-c-appears-vs-reality').value = char?.appears_vs_reality || '';
+  // If this character only has old-style combined data (no appears_text/
+  // reality_text yet, but a legacy appears_vs_reality value exists),
+  // best-effort split it on the old "Appears:"/"Reality:" markers so
+  // editing doesn't start from a blank slate — otherwise use the new
+  // fields directly.
+  if (char && !char.appears_text && !char.reality_text && char.appears_vs_reality) {
+    const legacy = char.appears_vs_reality;
+    const appearsMatch = legacy.match(/Appears:\s*([\s\S]*?)(?:\n\s*\n|Reality:|$)/i);
+    const realityMatch = legacy.match(/Reality:\s*([\s\S]*)$/i);
+    el('f-c-appears').value = appearsMatch ? appearsMatch[1].trim() : legacy.trim();
+    el('f-c-reality').value = realityMatch ? realityMatch[1].trim() : '';
+  } else {
+    el('f-c-appears').value = char?.appears_text || '';
+    el('f-c-reality').value = char?.reality_text || '';
+  }
   el('f-c-personality').value = char?.personality || '';
   el('f-c-notes').value = char?.notes || '';
   el('f-c-img').value = char?.profile_image_path || '';
@@ -4084,7 +4110,7 @@ function openCharModal(char = null) {
   openModal('overlay-character');
   refreshCharCounters(
     'f-c-name', 'f-c-vols', 'f-c-status-role', 'f-c-overall-vibes',
-    'f-c-appears-vs-reality', 'f-c-personality', 'f-c-notes'
+    'f-c-appears', 'f-c-reality', 'f-c-personality', 'f-c-notes'
   );
   el('f-c-name').focus();
 }
@@ -4097,7 +4123,8 @@ async function saveCharacter() {
     volume_appearances: el('f-c-vols').value.trim(),
     status_role: el('f-c-status-role').value.trim(),
     overall_vibes: el('f-c-overall-vibes').value.trim(),
-    appears_vs_reality: el('f-c-appears-vs-reality').value.trim(),
+    appears_text: el('f-c-appears').value.trim(),
+    reality_text: el('f-c-reality').value.trim(),
     personality: el('f-c-personality').value.trim(),
     notes: el('f-c-notes').value.trim(),
     profile_image_path: el('f-c-img').value || null,
@@ -4160,12 +4187,12 @@ async function openCharDrawer(c) {
       </div>
     </div>
 
-    ${c.appears_vs_reality ? `
+    ${(c.appears_text || c.reality_text || c.appears_vs_reality) ? `
       <div class="lore-section lore-contrast-section">
         <div class="lore-label">APPEARS VS. REALITY</div>
         <div class="lore-contrast-card">
           <div class="lore-contrast-content">
-            ${formatAppearsVsReality(c.appears_vs_reality)}
+            ${formatAppearsVsReality(c)}
           </div>
         </div>
       </div>
