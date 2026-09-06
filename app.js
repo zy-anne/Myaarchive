@@ -4680,19 +4680,16 @@ async function showGraph() {
     const idx = pairSeen[key] || 0;
     pairSeen[key] = idx + 1;
 
-    // First edge between a pair is straight; any additional ones between
-    // the same two characters are curved (alternating sides) so they
-    // don't render on top of each other and disappear from view.
     const smooth = idx === 0
-      ? false
-      : { type: idx % 2 === 1 ? 'curvedCW' : 'curvedCCW', roundness: 0.2 + Math.floor((idx - 1) / 2) * 0.2 };
+      ? { type: 'continuous', roundness: 0.15 }
+      : { type: idx % 2 === 1 ? 'curvedCW' : 'curvedCCW', roundness: 0.4 + Math.floor((idx - 1) / 2) * 0.4 };
 
     edges.push({
       id: r.id,
       from: r.from_character_id,
       to: r.to_character_id,
       arrows: r.is_bidirectional ? 'to, from' : 'to',
-      label: wrapEdgeLabel(relLabel(r)),
+      label: wrapEdgeLabel(relLabel(r), 10, 3),
       title: relLabel(r), // full, unwrapped text as a hover tooltip — nothing is lost even when the on-graph label above is wrapped or ellipsized
       font: { align: 'middle', size: 11, face: 'IBM Plex Mono', background: cBg, color: cMuted, strokeWidth: 0, multi: false },
       color: { color: c.border, highlight: '#A6803C', opacity: 0.8 },
@@ -4706,10 +4703,22 @@ async function showGraph() {
     interaction: { hover: true, tooltipDelay: 200 },
     physics: {
       solver: 'forceAtlas2Based',
-      // springLength is a bit longer than vis-network's default so that
-      // wrapped, multi-line edge labels (see wrapEdgeLabel above) have
-      // room to sit along the edge without crowding neighboring nodes.
-      forceAtlas2Based: { gravitationalConstant: -50, centralGravity: 0.01, springLength: 160, springConstant: 0.08 }
+      // Stronger repulsion + longer springs push nodes further apart at
+      // rest, giving converging edges (e.g. everything pointing at Lin
+      // Yan) more physical room to fan out instead of bundling together
+      // near the node itself, where their curved labels collide.
+      forceAtlas2Based: { gravitationalConstant: -120, centralGravity: 0.008, springLength: 260, springConstant: 0.05, avoidOverlap: 1 },
+      // Runs physics longer before settling — a graph this dense needs
+      // more iterations to fully untangle rather than freezing early in a
+      // still-crowded layout.
+      stabilization: { iterations: 400 }
+    },
+    edges: {
+      // Slight extra curvature baked in globally (on top of the explicit
+      // curvedCW/CCW multi-edge logic below) so even single, one-off
+      // edges bow outward a bit rather than cutting a straight line
+      // through the middle of unrelated nodes.
+      smooth: { type: 'dynamic' }
     }
   };
 
@@ -4743,6 +4752,10 @@ async function showGraph() {
   state.graphNetwork.once('stabilizationIterationsDone', () => {
     if (!state.graphNetwork) return; // modal may have closed mid-stabilization
     state.graphNetwork.fit({ animation: false });
+    // Back off slightly from the tightest possible fit — a graph this
+    // dense reads better with a little breathing room around the edges
+    // than filling the modal completely edge-to-edge.
+    state.graphNetwork.moveTo({ scale: state.graphNetwork.getScale() * 0.85 });
     graphMinScale = state.graphNetwork.getScale() * ZOOM_OUT_LIMIT_FACTOR;
   });
 
