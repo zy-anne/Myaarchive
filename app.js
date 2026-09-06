@@ -46,6 +46,7 @@ let state = {
   theme: 'dark',
   autoHideSidebar: false,  // boolean — persisted via settings (autoHideSidebar)
   groupsSectionCollapsed: false, // boolean — persisted via settings (groupsSectionCollapsed)
+  charDrawerRelsCollapsed: false, // boolean — persisted via settings (charRelsSectionCollapsed)
   currentUser: null,       // current signed in user
   seriesViewMode: 'table', // 'table' | 'card' — persisted via settings
   charViewMode: 'grid',    // 'grid' | 'list' — persisted via settings
@@ -452,6 +453,7 @@ async function loadSettings() {
   state.theme = settings.theme === 'light' ? 'light' : 'dark';
   state.autoHideSidebar = settings.autoHideSidebar === 'true';
   state.groupsSectionCollapsed = settings.groupsSectionCollapsed === 'true';
+  state.charDrawerRelsCollapsed = settings.charRelsSectionCollapsed === 'true';
   state.seriesViewMode = settings.seriesViewMode === 'card' ? 'card' : 'table';
   state.charViewMode = settings.charViewMode === 'list' ? 'list' : 'grid';
   state.sortField = ['title', 'author', 'rating', 'year_published', 'date_started', 'date_finished'].includes(settings.sortField) ? settings.sortField : 'title';
@@ -459,6 +461,7 @@ async function loadSettings() {
   applyTheme();
   applySidebarAutoHide();
   applyGroupsCollapsed();
+  applyCharDrawerRelsCollapsed();
 }
 
 function applyTheme() {
@@ -1080,6 +1083,7 @@ function bindEvents() {
   });
   setupImageDropZone(el('char-img-picker'), applyCharImgFile);
   el('btn-close-drawer').addEventListener('click', () => el('drawer-overlay').classList.add('hidden'));
+  el('btn-drawer-rels-collapse')?.addEventListener('click', toggleCharDrawerRelsCollapsed);
 
   // Gallery Actions
   el('btn-add-gallery-image').addEventListener('click', async () => {
@@ -2316,6 +2320,25 @@ async function toggleGroupsCollapsed() {
   state.groupsSectionCollapsed = !state.groupsSectionCollapsed;
   applyGroupsCollapsed();
   await window.api.settings.set('groupsSectionCollapsed', state.groupsSectionCollapsed ? 'true' : 'false');
+}
+
+// Reflects state.charDrawerRelsCollapsed onto the Relationships section
+// inside the character drawer. The drawer element itself never gets
+// destroyed/rebuilt (only #drawer-body/#drawer-rels' innerHTML changes
+// between characters), so this only needs to run once per load/toggle,
+// not every time the drawer opens.
+function applyCharDrawerRelsCollapsed() {
+  const section = el('drawer-rels-section');
+  if (!section) return;
+  section.classList.toggle('collapsed', !!state.charDrawerRelsCollapsed);
+  const btn = el('btn-drawer-rels-collapse');
+  if (btn) btn.setAttribute('aria-expanded', state.charDrawerRelsCollapsed ? 'false' : 'true');
+}
+
+async function toggleCharDrawerRelsCollapsed() {
+  state.charDrawerRelsCollapsed = !state.charDrawerRelsCollapsed;
+  applyCharDrawerRelsCollapsed();
+  await window.api.settings.set('charRelsSectionCollapsed', state.charDrawerRelsCollapsed ? 'true' : 'false');
 }
 
 async function loadSeriesGroups() {

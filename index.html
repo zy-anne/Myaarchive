@@ -942,13 +942,19 @@
           <button class="btn btn-danger-ghost btn-sm" id="btn-delete-char">Delete</button>
         </div>
       </div>
-      <div class="drawer-body" id="drawer-body"></div>
-      <div class="drawer-section">
-        <div class="drawer-section-header">
-          <span>Relationships</span>
-          <button class="btn btn-ghost btn-sm" id="btn-add-rel-drawer">+ Add</button>
+      <div class="drawer-scroll" id="drawer-scroll">
+        <div class="drawer-body" id="drawer-body"></div>
+        <div class="drawer-section" id="drawer-rels-section">
+          <div class="drawer-section-header">
+            <button type="button" class="groups-section-toggle" id="btn-drawer-rels-collapse" aria-expanded="true"
+              title="Show/hide relationships">
+              <span class="groups-toggle-chevron">▾</span>
+              <span>Relationships</span>
+            </button>
+            <button class="btn btn-ghost btn-sm" id="btn-add-rel-drawer">+ Add</button>
+          </div>
+          <div id="drawer-rels"></div>
         </div>
-        <div id="drawer-rels"></div>
       </div>
     </div>
   </div>
