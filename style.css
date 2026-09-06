@@ -2078,6 +2078,10 @@ tbody tr:hover {
   padding: var(--sp-5);
 }
 
+#overlay-manage-statuses {
+  z-index: 110;
+}
+
 .modal {
   background: var(--bg-color);
   border: 1px solid var(--border);

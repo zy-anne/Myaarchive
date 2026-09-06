@@ -953,8 +953,9 @@ function bindEvents() {
   el('btn-view-char-grid').addEventListener('click', () => setCharViewMode('grid'));
   el('btn-view-char-list').addEventListener('click', () => setCharViewMode('list'));
 
-  // Status Management
-  el('btn-manage-statuses').addEventListener('click', openManageStatusesModal);
+  // Status Management (entry point now lives in User Settings, not the
+  // Add/Edit Title form — see index.html's "Reading Statuses" section)
+  el('btn-open-manage-statuses')?.addEventListener('click', openManageStatusesModal);
   el('btn-add-status').addEventListener('click', addStatus);
   el('new-status-name').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); addStatus(); }
