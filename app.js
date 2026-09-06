@@ -3199,6 +3199,22 @@ function renderBookTypeOptions() {
   if (datalist) datalist.innerHTML = all.map(t => `<option value="${escapeHTML(t)}">`).join('');
 }
 
+// ─── Character "Appearances" field label/placeholder ───────────────────────
+// The same field (f-c-vols → data column `volume_appearances`) is reused
+// for both series (which have volumes) and standalone titles (which don't
+// — they only have chapters). Rather than adding a second column, this
+// keeps the underlying storage/name unchanged and just swaps what the
+// field is CALLED depending on state.currentSeries.kind, so a character on
+// a standalone book says "Chapter Appearances" (e.g. "Ch. 1, 5, 12")
+// instead of the series-oriented "Volume Appearances" (e.g. "Vol. 1, 3, 5").
+function applyCharVolsFieldLabel() {
+  const isStandalone = state.currentSeries?.kind === 'standalone';
+  const label = el('label-f-c-vols');
+  const input = el('f-c-vols');
+  if (label) label.textContent = isStandalone ? 'Chapter Appearances' : 'Volume Appearances';
+  if (input) input.placeholder = isStandalone ? 'e.g. Ch. 1, 5, 12' : 'e.g. Vol. 1, 3, 5';
+}
+
 function openSeriesModal(series = null) {
   el('modal-series-title').textContent = series
     ? (series.kind === 'standalone' ? 'Edit Standalone Title' : 'Edit Title')
@@ -3686,13 +3702,19 @@ function renderCharacters() {
 }
 
 // List view of the same character data — compact rows instead of avatar
-// tiles, useful for series with a large cast.
+// tiles, useful for series with a large cast. The volume/chapter
+// appearances subtitle mirrors whichever wording the current title uses
+// (see applyCharVolsFieldLabel) so a standalone book's characters read
+// "No chapter appearances noted" instead of the series-oriented default.
 function renderCharactersList() {
   const list = dom.charList;
   if (state.characters.length === 0) {
     list.innerHTML = `<div class="empty-state"><h3>No characters yet</h3></div>`;
     return;
   }
+
+  const isStandalone = state.currentSeries?.kind === 'standalone';
+  const noAppearancesText = isStandalone ? 'No chapter appearances noted' : 'No volume appearances noted';
 
   list.innerHTML = state.characters.map(c => `
     <div class="character-list-row" data-id="${c.id}">
@@ -3701,7 +3723,7 @@ function renderCharactersList() {
       </div>
       <div class="character-list-info">
         <div class="character-list-name">${escapeHTML(c.name)}</div>
-        <div class="character-list-meta">${c.volume_appearances ? escapeHTML(c.volume_appearances) : 'No volume appearances noted'}</div>
+        <div class="character-list-meta">${c.volume_appearances ? escapeHTML(c.volume_appearances) : noAppearancesText}</div>
       </div>
       <span class="char-role ${c.role.toLowerCase()}">${escapeHTML(c.role)}</span>
     </div>
@@ -3776,6 +3798,7 @@ function openCharModal(char = null) {
   el('f-c-name').value = char?.name || '';
   el('f-c-role').value = char?.role || 'Side';
   el('f-c-vols').value = char?.volume_appearances || '';
+  applyCharVolsFieldLabel();
   el('f-c-status-role').value = char?.status_role || '';
   el('f-c-overall-vibes').value = char?.overall_vibes || '';
   el('f-c-appears-vs-reality').value = char?.appears_vs_reality || '';
@@ -3841,6 +3864,8 @@ async function openCharDrawer(c) {
     ? nl2br(c.status_role)
     : (c.role ? `<strong>${escapeHTML(c.role)}</strong>` : '');
 
+  const appearancesLabel = state.currentSeries?.kind === 'standalone' ? 'APPEARS IN (CHAPTERS)' : 'APPEARS IN';
+
   dom.drawerBody.innerHTML = `
     <div class="lore-header">
       <div class="lore-eyebrow">DEEP DIVE</div>
@@ -3896,7 +3921,7 @@ async function openCharDrawer(c) {
 
     ${c.volume_appearances ? `
       <div class="lore-section">
-        <div class="lore-label">APPEARS IN</div>
+        <div class="lore-label">${escapeHTML(appearancesLabel)}</div>
         <div class="lore-simple-meta">${escapeHTML(c.volume_appearances)}</div>
       </div>
     ` : ''}
