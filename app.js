@@ -987,6 +987,7 @@ function bindEvents() {
       e.currentTarget.classList.add('active');
       el('f-s-kind').value = e.currentTarget.dataset.kind;
       el('series-cover-group').classList.toggle('hidden', e.currentTarget.dataset.kind !== 'standalone');
+      el('standalone-chapter-count-group').classList.toggle('hidden', e.currentTarget.dataset.kind !== 'standalone');
     });
   });
 
@@ -1628,7 +1629,7 @@ function renderSeriesTable() {
           ${escapeHTML(s.status).toUpperCase()}
         </span>
       </td>
-      <td class="col-num">${s.kind === 'standalone' ? '<span class="empty-dim">—</span>' : (s.volume_count || 0)}</td>
+      <td class="col-num">${s.kind === 'standalone' ? (s.standalone_chapter_count || '<span class="empty-dim">—</span>') : (s.volume_count || '<span class="empty-dim">—</span>')}</td>
       <td class="col-num">${formatCell(s.year_published)}</td>
       <td class="col-rating">${renderRating(s.rating)}</td>
       <td class="col-actions">
@@ -1652,6 +1653,11 @@ function renderSeriesCards() {
   grid.innerHTML = state.series.map(s => `
     <div class="series-card" data-id="${s.id}">
       <div class="series-card-cover">
+        ${(s.kind === 'standalone' || s.book_type) ? `
+        <div class="series-card-badges-overlay">
+          ${s.kind === 'standalone' ? `<span class="kind-badge kind-badge-overlay">Standalone</span>` : ''}
+          ${s.book_type ? `<span class="book-type-badge book-type-badge-overlay">${escapeHTML(s.book_type)}</span>` : ''}
+        </div>` : ''}
         ${s.is_nsfw ? `<span class="series-card-nsfw-badge" title="NSFW">NSFW</span>` : ''}
         ${s.cover_image_path
       ? `<img data-key="${escapeHTML(s.cover_image_path)}" alt="${escapeHTML(s.title)}">`
@@ -1661,15 +1667,12 @@ function renderSeriesCards() {
         <div class="series-card-title">
           ${escapeHTML(s.title)}
         </div>
-        ${(s.kind === 'standalone' || s.book_type) ? `
-        <div class="series-card-badges">
-          ${s.kind === 'standalone' ? `<span class="kind-badge">Standalone</span>` : ''}
-          ${s.book_type ? `<span class="book-type-badge">${escapeHTML(s.book_type)}</span>` : ''}
-        </div>` : ''}
         <div class="series-card-author">${escapeHTML(s.author || '')}</div>
         <div class="series-card-footer">
           <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span>
-          <span class="series-card-count">${s.kind === 'standalone' ? '—' : `${s.volume_count} vol`}</span>
+          <span class="series-card-count">${s.kind === 'standalone'
+      ? (s.standalone_chapter_count ? `${s.standalone_chapter_count} ch` : '—')
+      : `${s.volume_count} vol`}</span>
         </div>
       </div>
     </div>
@@ -2644,6 +2647,7 @@ function renderHeroExtraDetails(s) {
   const items = [];
   if (s.rating) items.push({ label: 'Rating', starRating: s.rating });
   if (s.book_type) items.push({ label: 'Book Type', value: s.book_type });
+  if (s.standalone_chapter_count) items.push({ label: 'Chapters', value: s.standalone_chapter_count });
   if (s.date_started) items.push({ label: 'Date Started', value: formatDate(s.date_started) });
   if (s.date_finished) items.push({ label: 'Date Finished', value: formatDate(s.date_finished) });
   if (s.artist) items.push({ label: 'Artist(s)', value: s.artist });
@@ -2731,6 +2735,7 @@ async function saveStandaloneThoughts() {
     original_publisher: s.original_publisher,
     english_publisher: s.english_publisher,
     is_nsfw: s.is_nsfw,
+    standalone_chapter_count: s.standalone_chapter_count,
   };
   await window.api.series.update(s.id, d);
   toast('Thoughts saved');
@@ -3234,6 +3239,9 @@ function openSeriesModal(series = null) {
 
   el('series-cover-group').classList.toggle('hidden', kind !== 'standalone');
   el('f-s-cover').value = series?.cover_image_path || '';
+  el('standalone-chapter-count-group').classList.toggle('hidden', kind !== 'standalone');
+  el('f-s-chapter-count').value = series?.standalone_chapter_count || '';
+
   if (series?.cover_image_path) {
     el('series-cover-preview').innerHTML = '';
     el('series-cover-preview').style.backgroundImage = 'none';
@@ -3340,6 +3348,9 @@ async function saveSeries() {
     original_publisher: el('f-s-orig-publisher').value.trim(),
     english_publisher: el('f-s-eng-publisher').value.trim(),
     is_nsfw: el('f-s-nsfw').value === '1',
+    standalone_chapter_count: el('f-s-kind').value === 'standalone'
+      ? (parseInt(el('f-s-chapter-count').value) || null)
+      : null,
   };
   if (!d.title) return toast('Title is required', true);
 

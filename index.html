@@ -564,6 +564,17 @@
           <span class="char-counter" id="f-s-author-counter">0 / 200</span>
         </div>
         <div class="form-row">
+          <div class="form-group" id="standalone-chapter-count-group">
+            <label for="f-s-chapter-count">Chapters</label>
+            <input id="f-s-chapter-count" type="number" min="0" placeholder="e.g. 45">
+          </div>
+          <div class="form-group">
+            <label>Rating</label>
+            <div class="rating-stars" id="f-s-rating-stars"></div>
+            <input type="hidden" id="f-s-rating" value="0">
+          </div>
+        </div>
+        <div class="form-row">
           <div class="form-group">
             <label for="f-s-status">Status</label>
             <div class="status-select-row">
@@ -589,15 +600,14 @@
           <div class="tag-dropdown hidden" id="tag-dropdown"></div>
         </div>
         <div class="form-group">
-          <label>Content Warnings <span class="optional">(optional)</span></label>
+          <label>Content Warnings</label>
           <div class="tag-input-wrap warning-input-wrap" id="warning-input-wrap">
             <div id="warning-chips" class="tag-chips"></div>
             <input id="f-s-warnings" type="text" placeholder="Type a warning and press Enter…" maxlength="60"
               autocomplete="off">
           </div>
           <div class="tag-dropdown hidden" id="warning-dropdown"></div>
-          <p class="form-hint">e.g. Major Character Death, Abuse in Backstory, Body Horror — shown on the title's
-            Details tab.</p>
+          <p class="form-hint">e.g. Major Character Death, Abuse in Backstory, Body Horror</p>
         </div>
         <div class="form-group">
           <label for="f-s-synopsis">Synopsis</label>
@@ -606,143 +616,136 @@
         </div>
 
         <details class="details-section" id="series-extra-details">
-          <summary>Additional Details <span class="optional">(all optional)</span></summary>
+          <summary>Additional Details</summary>
           <div class="details-section-body">
             <div class="form-row">
-              <div class="form-group">
-                <label>Rating</label>
-                <div class="rating-stars" id="f-s-rating-stars"></div>
-                <input type="hidden" id="f-s-rating" value="0">
-              </div>
-              <div class="form-group">
-                <label for="f-s-booktype">Book Type</label>
-                <input id="f-s-booktype" type="text" list="book-type-options" placeholder="e.g. Web Novel, Manga"
-                  maxlength="100" autocomplete="off">
-                <datalist id="book-type-options">
-                  <option value="Novel">
-                  <option value="Light Novel">
-                  <option value="Web Novel">
-                  <option value="Graphic Novel">
-                  <option value="Manga">
-                  <option value="Manhwa">
-                  <option value="Manhua">
-                  <option value="Comic">
-                </datalist>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="f-s-date-started">Date Started</label>
-                <input id="f-s-date-started" type="date">
-              </div>
-              <div class="form-group">
-                <label for="f-s-date-finished">Date Finished</label>
-                <input id="f-s-date-finished" type="date">
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="f-s-artist">Artist(s)</label>
-                <input id="f-s-artist" type="text" placeholder="e.g. Takeshi Obata" maxlength="300">
-              </div>
-              <div class="form-group">
-                <label for="f-s-year-pub">Year Published</label>
-                <input id="f-s-year-pub" type="text" placeholder="e.g. 2019" maxlength="20" inputmode="numeric">
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="f-s-orig-lang">Original Language</label>
-                <input id="f-s-orig-lang" type="text" list="orig-lang-options" placeholder="e.g. Japanese"
-                  maxlength="100" autocomplete="off">
-                <datalist id="orig-lang-options">
-                  <option value="Japanese">
-                  <option value="Korean">
-                  <option value="Chinese">
-                  <option value="English">
-                </datalist>
-              </div>
-              <div class="form-group">
-                <label for="f-s-origin-country">Country of Origin</label>
-                <input id="f-s-origin-country" type="text" list="origin-country-options" placeholder="e.g. Japan"
-                  maxlength="100" autocomplete="off">
-                <datalist id="origin-country-options">
-                  <option value="Japan">
-                  <option value="South Korea">
-                  <option value="China">
-                </datalist>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="f-s-lang-read">Language Read</label>
-                <input id="f-s-lang-read" type="text" placeholder="English" value="English" maxlength="100">
-              </div>
-              <div class="form-group">
-                <label for="f-s-status-origin">Status in Country of Origin</label>
-                <input id="f-s-status-origin" type="text" list="origin-status-options" placeholder="e.g. Ongoing"
-                  maxlength="100" autocomplete="off">
-                <datalist id="origin-status-options">
-                  <option value="Ongoing">
-                  <option value="Completed">
-                  <option value="Hiatus">
-                  <option value="Cancelled">
-                </datalist>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="f-s-licensed">Licensed to English?</label>
-                <select id="f-s-licensed">
-                  <option value="">Unknown</option>
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="f-s-translated">Completely Translated?</label>
-                <select id="f-s-translated">
-                  <option value="">Unknown</option>
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="f-s-orig-publisher">Original Publisher</label>
-                <input id="f-s-orig-publisher" type="text" placeholder="e.g. Shueisha" maxlength="200">
-              </div>
-              <div class="form-group">
-                <label for="f-s-eng-publisher">English Publisher</label>
-                <input id="f-s-eng-publisher" type="text" placeholder="e.g. Viz Media" maxlength="200">
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="f-s-nsfw">NSFW Content?</label>
-                <select id="f-s-nsfw">
-                  <option value="0">No</option>
-                  <option value="1">Yes</option>
-                </select>
-                <p class="form-hint">Flags this title with a red marker in the library and gallery views.</p>
-              </div>
+              <label for="f-s-booktype">Book Type</label>
+              <input id="f-s-booktype" type="text" list="book-type-options" placeholder="e.g. Web Novel" maxlength="100"
+                autocomplete="off">
+              <datalist id="book-type-options">
+                <option value="Novel">
+                <option value="Light Novel">
+                <option value="Web Novel">
+                <option value="Graphic Novel">
+                <option value="Manga">
+                <option value="Manhwa">
+                <option value="Manhua">
+                <option value="Comic">
+              </datalist>
             </div>
           </div>
-        </details>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="f-s-date-started">Date Started</label>
+              <input id="f-s-date-started" type="date">
+            </div>
+            <div class="form-group">
+              <label for="f-s-date-finished">Date Finished</label>
+              <input id="f-s-date-finished" type="date">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="f-s-artist">Artist(s)</label>
+              <input id="f-s-artist" type="text" placeholder="e.g. Takeshi Obata" maxlength="300">
+            </div>
+            <div class="form-group">
+              <label for="f-s-year-pub">Year Published</label>
+              <input id="f-s-year-pub" type="text" placeholder="e.g. 2019" maxlength="20" inputmode="numeric">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="f-s-orig-lang">Original Language</label>
+              <input id="f-s-orig-lang" type="text" list="orig-lang-options" placeholder="e.g. Japanese" maxlength="100"
+                autocomplete="off">
+              <datalist id="orig-lang-options">
+                <option value="Japanese">
+                <option value="Korean">
+                <option value="Chinese">
+                <option value="English">
+              </datalist>
+            </div>
+            <div class="form-group">
+              <label for="f-s-origin-country">Country of Origin</label>
+              <input id="f-s-origin-country" type="text" list="origin-country-options" placeholder="e.g. Japan"
+                maxlength="100" autocomplete="off">
+              <datalist id="origin-country-options">
+                <option value="Japan">
+                <option value="South Korea">
+                <option value="China">
+              </datalist>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="f-s-lang-read">Language Read</label>
+              <input id="f-s-lang-read" type="text" placeholder="English" value="English" maxlength="100">
+            </div>
+            <div class="form-group">
+              <label for="f-s-status-origin">Status in Country of Origin</label>
+              <input id="f-s-status-origin" type="text" list="origin-status-options" placeholder="e.g. Ongoing"
+                maxlength="100" autocomplete="on">
+              <datalist id="origin-status-options">
+                <option value="Ongoing">
+                <option value="Completed">
+                <option value="Hiatus">
+                <option value="Cancelled">
+              </datalist>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="f-s-licensed">Licensed to English?</label>
+              <select id="f-s-licensed">
+                <option value="">Unknown</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="f-s-translated">Completely Translated?</label>
+              <select id="f-s-translated">
+                <option value="">Unknown</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="f-s-orig-publisher">Original Publisher</label>
+              <input id="f-s-orig-publisher" type="text" placeholder="e.g. Shueisha" maxlength="200">
+            </div>
+            <div class="form-group">
+              <label for="f-s-eng-publisher">English Publisher</label>
+              <input id="f-s-eng-publisher" type="text" placeholder="e.g. Viz Media" maxlength="200">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="f-s-nsfw">NSFW Content?</label>
+              <select id="f-s-nsfw">
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+              </select>
+            </div>
+          </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" data-close="overlay-series">Cancel</button>
-        <button class="btn btn-primary" id="btn-save-series">Save</button>
-      </div>
+      </details>
     </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-close="overlay-series">Cancel</button>
+      <button class="btn btn-primary" id="btn-save-series">Save</button>
+    </div>
+  </div>
   </div>
 
   <!-- Standalone Thoughts -->
@@ -795,7 +798,7 @@
           </div>
           <div class="form-group">
             <label for="f-v-title">Subtitle</label>
-            <input id="f-v-title" type="text" placeholder="Optional volume subtitle" maxlength="300">
+            <input id="f-v-title" type="text" placeholder="Volume subtitle" maxlength="300">
             <span class="char-counter" id="f-v-title-counter">0 / 300</span>
           </div>
         </div>
@@ -806,7 +809,7 @@
             <span class="char-counter" id="f-v-chapters-counter">0 / 200</span>
           </div>
           <div class="form-group form-group-sm">
-            <label for="f-v-count">Ch. Count</label>
+            <label for="f-v-count">Chapters</label>
             <input id="f-v-count" type="number" min="0" placeholder="45">
           </div>
           <div class="form-group form-group-sm">
@@ -815,7 +818,7 @@
           </div>
         </div>
         <div class="form-group">
-          <label for="f-v-published">Publication Date <span class="optional">(optional)</span></label>
+          <label for="f-v-published">Publication Date</label>
           <input id="f-v-published" type="date">
         </div>
         <div class="form-group">
@@ -888,17 +891,15 @@
         </div>
 
         <div class="form-group">
-          <label for="f-c-status-role">Status &amp; Role <span class="optional">(e.g. Emperor | Newly crowned emperor
-              who…)</span></label>
+          <label for="f-c-status-role">Status &amp; Role </label>
           <textarea id="f-c-status-role" rows="2" maxlength="2000"
-            placeholder="Title, rank, status, and summary of their role…"></textarea>
+            placeholder="Title, rank, status, or a summary of their role…"></textarea>
           <span class="char-counter" id="f-c-status-role-counter">0 / 2000</span>
         </div>
 
         <div class="form-group">
           <label for="f-c-overall-vibes">Overall Vibes <span class="optional">(one-line tagline or quote)</span></label>
-          <input id="f-c-overall-vibes" type="text"
-            placeholder='e.g. "Cold, dangerous, suspicious, calculating, possessive…"' maxlength="500">
+          <input id="f-c-overall-vibes" type="text" maxlength="500">
           <span class="char-counter" id="f-c-overall-vibes-counter">0 / 500</span>
         </div>
 
@@ -913,13 +914,12 @@
         <div class="form-group">
           <label for="f-c-personality">Personality <span class="optional">(key traits, quirks,
               weaknesses)</span></label>
-          <textarea id="f-c-personality" rows="3" maxlength="3000"
-            placeholder="e.g. ✨ cold-blooded, ruthless, and willing to use political manipulation…"></textarea>
+          <textarea id="f-c-personality" rows="3" maxlength="3000"></textarea>
           <span class="char-counter" id="f-c-personality-counter">0 / 3000</span>
         </div>
 
         <div class="form-group">
-          <label for="f-c-notes">Additional Notes <span class="optional">(optional general notes)</span></label>
+          <label for="f-c-notes">Additional Notes</label>
           <textarea id="f-c-notes" rows="3" maxlength="10000"
             placeholder="Other notes, backstories, secrets…"></textarea>
           <span class="char-counter" id="f-c-notes-counter">0 / 10000</span>

@@ -1398,6 +1398,34 @@ th.col-num {
   flex-wrap: wrap;
 }
 
+/* Standalone/book-type badges as an overlay on the cover itself (top-left),
+   mirroring where the NSFW badge sits (top-right) — reads as metadata about
+   the cover art rather than competing with the title/author text below. */
+.series-card-badges-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: calc(100% - 16px);
+}
+
+.kind-badge-overlay,
+.book-type-badge-overlay {
+  background: rgba(7, 7, 42, 0.72);
+  backdrop-filter: blur(2px);
+  border-color: transparent;
+  color: #FFF;
+  box-shadow: var(--shadow-sm);
+}
+
+.book-type-badge-overlay {
+  color: var(--gold);
+}
+
 .series-card-footer {
   display: flex;
   justify-content: space-between;

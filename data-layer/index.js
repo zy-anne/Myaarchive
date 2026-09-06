@@ -291,21 +291,22 @@ async function seriesGet(db, ownerId, id) {
 // Kept as a single ordered array so the INSERT/UPDATE column lists and the
 // migration below can't drift out of sync with each other.
 const SERIES_EXTRA_FIELDS = [
-  ['book_type', 'TEXT'],                    // e.g. Web Novel, Manga, Graphic Novel
-  ['rating', 'INTEGER'],                    // 1-5, or NULL if unrated
+  ['book_type', 'TEXT'],
+  ['rating', 'INTEGER'],
   ['original_language', 'TEXT'],
   ['country_of_origin', 'TEXT'],
   ['language_read', "TEXT DEFAULT 'English'"],
   ['artist', 'TEXT'],
-  ['year_published', 'TEXT'],               // series/standalone-level publication year
-  ['date_started', 'TEXT'],                 // reading start date
-  ['date_finished', 'TEXT'],                // reading finish date
-  ['status_country_of_origin', 'TEXT'],     // e.g. Ongoing / Completed / Hiatus in its home market
-  ['licensed_english', 'TEXT'],             // 'Yes' / 'No' / '' (unknown)
-  ['completely_translated', 'TEXT'],        // 'Yes' / 'No' / '' (unknown)
+  ['year_published', 'TEXT'],
+  ['date_started', 'TEXT'],
+  ['date_finished', 'TEXT'],
+  ['status_country_of_origin', 'TEXT'],
+  ['licensed_english', 'TEXT'],
+  ['completely_translated', 'TEXT'],
   ['original_publisher', 'TEXT'],
   ['english_publisher', 'TEXT'],
-  ['is_nsfw', 'INTEGER NOT NULL DEFAULT 0'], // 0/1 — flags a title as NSFW content
+  ['is_nsfw', 'INTEGER NOT NULL DEFAULT 0'],
+  ['standalone_chapter_count', 'INTEGER'], // ← NEW: total chapter count for standalone titles only
 ];
 
 function seriesExtraArgs(data) {
@@ -325,6 +326,7 @@ function seriesExtraArgs(data) {
     data.original_publisher || null,
     data.english_publisher || null,
     data.is_nsfw ? 1 : 0,
+    data.standalone_chapter_count || null, // ← NEW
   ];
 }
 
@@ -340,8 +342,8 @@ async function seriesCreate(db, ownerId, data) {
                 title, author, status, synopsis, library_id, kind, overall_thoughts, chapter_thoughts, cover_image_path,
                 book_type, rating, original_language, country_of_origin, language_read, artist, year_published,
                 date_started, date_finished, status_country_of_origin, licensed_english, completely_translated,
-                original_publisher, english_publisher, is_nsfw
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                original_publisher, english_publisher, is_nsfw, standalone_chapter_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         data.title, data.author || null, data.status || 'Planning', data.synopsis || null, data.library_id,
         data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
@@ -376,7 +378,7 @@ async function seriesUpdate(db, ownerId, id, data) {
     UPDATE series SET title=?, author=?, status=?, synopsis=?, kind=?, overall_thoughts=?, chapter_thoughts=?, cover_image_path=?,
       book_type=?, rating=?, original_language=?, country_of_origin=?, language_read=?, artist=?, year_published=?,
       date_started=?, date_finished=?, status_country_of_origin=?, licensed_english=?, completely_translated=?,
-      original_publisher=?, english_publisher=?, is_nsfw=?, library_id=?
+      original_publisher=?, english_publisher=?, is_nsfw=?, standalone_chapter_count=?, library_id=?
     WHERE id=?
   `, [data.title, data.author || null, data.status || 'Planning', data.synopsis || null,
   data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
@@ -434,6 +436,7 @@ async function seriesCopy(db, ownerId, id, targetLibraryId, options = {}) {
     original_publisher: existing.original_publisher,
     english_publisher: existing.english_publisher,
     is_nsfw: existing.is_nsfw ? 1 : 0,
+    standalone_chapter_count: existing.standalone_chapter_count,
     tags: existing.tags.map(t => t.name),
     genres: existing.genres.map(g => g.name),
     content_warnings: existing.content_warnings.map(w => w.name),
