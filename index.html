@@ -333,11 +333,11 @@
               </button>
             </div>
           </div>
-          <!-- Details Tab (genres, tags, synopsis, additional metadata —
-               kept separate from Volumes/Thoughts so those aren't buried
-               under a wall of metadata) -->
           <div id="pane-details" class="tab-pane active">
-            <div id="series-hero-details"></div>
+            <div id="series-hero-details" class="hero-details-columns">
+              <div class="hero-details-col" id="hero-details-left"></div>
+              <div class="hero-details-col" id="hero-details-right"></div>
+            </div>
           </div>
           <!-- Volumes / Thoughts Tab -->
           <div id="pane-volumes" class="tab-pane hidden">
@@ -644,6 +644,13 @@
           <p class="form-hint">e.g. Major Character Death, Abuse in Backstory, Body Horror</p>
         </div>
         <div class="form-group">
+          <label for="f-s-nsfw">NSFW Content?</label>
+          <select id="f-s-nsfw">
+            <option value="0">No</option>
+            <option value="1">Yes</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label for="f-s-synopsis">Synopsis</label>
           <textarea id="f-s-synopsis" rows="4" maxlength="5000" placeholder="Brief description of the work"></textarea>
           <span class="char-counter" id="f-s-synopsis-counter">0 / 5000</span>
@@ -761,16 +768,6 @@
               <div class="form-group">
                 <label for="f-s-eng-publisher">English Publisher</label>
                 <input id="f-s-eng-publisher" type="text" placeholder="e.g. Viz Media" maxlength="200">
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="f-s-nsfw">NSFW Content?</label>
-                <select id="f-s-nsfw">
-                  <option value="0">No</option>
-                  <option value="1">Yes</option>
-                </select>
               </div>
             </div>
           </div>
@@ -1207,10 +1204,6 @@
           <div class="form-group">
             <label>Publisher</label>
             <div class="filter-checkbox-list" id="filter-publisher-list"></div>
-          </div>
-          <div class="form-group">
-            <label>NSFW</label>
-            <div class="filter-checkbox-list" id="filter-nsfw-list"></div>
           </div>
         </div>
       </div>

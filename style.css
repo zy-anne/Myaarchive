@@ -1071,6 +1071,7 @@ table {
   width: 100%;
   border-collapse: collapse;
   margin-top: var(--sp-5);
+  table-layout: fixed;
 }
 
 th {
@@ -1117,6 +1118,7 @@ td {
   padding: 18px 16px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
+  overflow: hidden;
 }
 
 tbody tr {
@@ -1128,22 +1130,24 @@ tbody tr:hover {
   background: var(--surface);
 }
 
-.col-num {
-  width: 80px;
-  text-align: center;
+.col-title {
+  width: 24%;
 }
 
-th.col-num {
-  text-align: center;
+.col-author {
+  width: 12%;
+}
+
+.col-tags {
+  width: 16%;
+}
+
+.col-rating {
+  width: 90px;
 }
 
 .col-status {
-  width: 100px;
-}
-
-.col-actions {
-  width: 40px;
-  text-align: center;
+  width: 110px;
 }
 
 .row-arrow {
@@ -1163,12 +1167,15 @@ th.col-num {
 .status-badge {
   display: inline-flex;
   align-items: center;
+  max-width: 100%;
   padding: 4px 12px;
   border-radius: var(--radius-pill);
   font-size: 10px;
   font-weight: 600;
   border: 1px solid currentColor;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .kind-badge {
@@ -1491,8 +1498,23 @@ th.col-num {
   padding: 0 var(--gutter) var(--sp-5);
 }
 
-#series-hero-details {
-  padding: 0 var(--gutter) var(--sp-6);
+.hero-details-columns {
+  display: grid;
+  grid-template-columns: 20% 80%;
+  gap: var(--sp-7);
+  align-items: start;
+}
+
+.hero-details-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+@media (max-width: 900px) {
+  .hero-details-columns {
+    grid-template-columns: 1fr;
+  }
 }
 
 .hero-title {

@@ -79,6 +79,8 @@ const dom = {
 
   heroTop: el('series-hero-top'),
   heroDetails: el('series-hero-details'),
+  heroDetailsLeft: el('hero-details-left'),
+  heroDetailsRight: el('hero-details-right'),
   tabDetails: el('tab-details'),
   tabVols: el('tab-volumes'),
   tabChars: el('tab-characters'),
@@ -2742,33 +2744,6 @@ function renderSeriesHero(s) {
   // Fetch and display image if a key is present
   fillCoverImages(dom.heroTop);
 
-  dom.heroDetails.innerHTML = `
-    ${s.genres.length ? `
-      <div class="hero-field">
-        <span class="hero-field-label">Genre</span>
-        <div class="tag-list">
-          ${s.genres.map(g => `<span class="genre-pill" style="background:${g.color}">${escapeHTML(g.name)}</span>`).join('')}
-        </div>
-      </div>
-    ` : ''}
-    ${s.tags.length ? `
-      <div class="hero-field">
-        <span class="hero-field-label">Tags</span>
-        <div class="tag-list">
-          ${s.tags.map(t => `<span class="tag-pill" style="color:${t.color}; border-color:${t.color}">${escapeHTML(t.name)}</span>`).join('')}
-        </div>
-      </div>
-    ` : ''}
-    ${s.content_warnings && s.content_warnings.length ? `
-      <div class="hero-field">
-        <span class="hero-field-label">Content Warnings</span>
-        <div class="tag-list">
-          ${s.content_warnings.map(w => `<span class="warning-pill">${escapeHTML(w.name)}</span>`).join('')}
-        </div>
-      </div>
-    ` : ''}
-    ${s.synopsis ? `<div class="hero-synopsis">${nl2br(s.synopsis)}</div>` : ''}
-  `;
   const coverWrap = dom.heroTop.querySelector('.hero-cover-wrap');
   if (coverWrap) {
     coverWrap.addEventListener('click', () => {
@@ -2778,25 +2753,75 @@ function renderSeriesHero(s) {
       }
     });
   }
-  renderHeroExtraDetails(s);
+
+  renderHeroDetailsColumns(s);
 }
 
-// Renders whichever of the optional "additional details" fields are
-// actually filled in, as a compact label/value grid. Nothing shows at all
-// if none of them were set.
-function renderHeroExtraDetails(s) {
-  let grid = document.getElementById('hero-extra-grid');
-  if (!grid) {
-    grid = document.createElement('div');
-    grid.id = 'hero-extra-grid';
-    grid.className = 'hero-extra-grid';
-    dom.heroDetails.appendChild(grid);
+// Fills the two-column Details tab layout: left column holds the
+// descriptive/categorical fields (Tags, Genre, Synopsis, Content
+// Warnings, NSFW); right column holds Rating/Status plus every
+// publication-metadata field, in the requested order. Each field is only
+// rendered if it's actually set, same "nothing shows if nothing's filled
+// in" behavior the old single-column layout had.
+function renderHeroDetailsColumns(s) {
+  const leftParts = [];
+
+  if (s.tags.length) {
+    leftParts.push(`
+      <div class="hero-field">
+        <span class="hero-field-label">Tags</span>
+        <div class="tag-list">
+          ${s.tags.map(t => `<span class="tag-pill" style="color:${t.color}; border-color:${t.color}">${escapeHTML(t.name)}</span>`).join('')}
+        </div>
+      </div>
+    `);
   }
+  if (s.genres.length) {
+    leftParts.push(`
+      <div class="hero-field">
+        <span class="hero-field-label">Genre</span>
+        <div class="tag-list">
+          ${s.genres.map(g => `<span class="genre-pill" style="background:${g.color}">${escapeHTML(g.name)}</span>`).join('')}
+        </div>
+      </div>
+    `);
+  }
+  if (s.synopsis) {
+    leftParts.push(`
+      <div class="hero-field">
+        <span class="hero-field-label">Synopsis</span>
+        <div class="hero-synopsis">${nl2br(s.synopsis)}</div>
+      </div>
+    `);
+  }
+  if (s.content_warnings && s.content_warnings.length) {
+    leftParts.push(`
+      <div class="hero-field">
+        <span class="hero-field-label">Content Warnings</span>
+        <div class="tag-list">
+          ${s.content_warnings.map(w => `<span class="warning-pill">${escapeHTML(w.name)}</span>`).join('')}
+        </div>
+      </div>
+    `);
+  }
+  if (s.is_nsfw) {
+    leftParts.push(`
+      <div class="hero-field">
+        <span class="hero-field-label">NSFW</span>
+        <span class="warning-pill">Yes</span>
+      </div>
+    `);
+  }
+
+  dom.heroDetailsRight.innerHTML = leftParts.length
+    ? leftParts.join('')
+    : `<p class="empty-dim">No tags, genres, warnings, or synopsis added yet.</p>`;
 
   const items = [];
   if (s.rating) items.push({ label: 'Rating', starRating: s.rating });
-  if (s.book_type) items.push({ label: 'Book Type', value: s.book_type });
+  items.push({ label: 'Status', statusBadge: s.status });
   if (s.kind === 'standalone' && s.standalone_chapter_count) items.push({ label: 'Chapter Count', value: s.standalone_chapter_count });
+  if (s.book_type) items.push({ label: 'Book Type', value: s.book_type });
   if (s.date_started) items.push({ label: 'Date Started', value: formatDate(s.date_started), editableDateField: 'date_started', rawDate: s.date_started });
   if (s.date_finished) items.push({ label: 'Date Finished', value: formatDate(s.date_finished), editableDateField: 'date_finished', rawDate: s.date_finished });
   if (s.artist) items.push({ label: 'Artist(s)', value: s.artist });
@@ -2804,34 +2829,32 @@ function renderHeroExtraDetails(s) {
   if (s.original_language) items.push({ label: 'Original Language', value: s.original_language });
   if (s.country_of_origin) items.push({ label: 'Country of Origin', value: s.country_of_origin });
   if (s.language_read && s.language_read !== 'English') items.push({ label: 'Language Read', value: s.language_read });
-  if (s.status_country_of_origin) items.push({ label: 'Status in Origin', value: s.status_country_of_origin });
-  if (s.licensed_english) items.push({ label: 'Licensed (English)', value: s.licensed_english });
-  if (s.completely_translated) items.push({ label: 'Fully Translated', value: s.completely_translated });
+  if (s.status_country_of_origin) items.push({ label: 'Status in Country of Origin', value: s.status_country_of_origin });
+  if (s.licensed_english) items.push({ label: 'Licensed to English?', value: s.licensed_english });
+  if (s.completely_translated) items.push({ label: 'Completely Translated?', value: s.completely_translated });
   if (s.original_publisher) items.push({ label: 'Original Publisher', value: s.original_publisher });
   if (s.english_publisher) items.push({ label: 'English Publisher', value: s.english_publisher });
-  if (s.is_nsfw) items.push({ label: 'NSFW', value: 'Yes' });
 
-  if (items.length === 0) { grid.innerHTML = ''; grid.classList.add('hidden'); return; }
-  grid.classList.remove('hidden');
-
-  grid.innerHTML = items.map(item => `
-    <div class="hero-extra-item">
+  dom.heroDetailsLeft.innerHTML = items.map(item => `
+    <div class="hero-field">
       <span class="hero-field-label">${escapeHTML(item.label)}</span>
       ${item.starRating
-      ? `<div class="hero-extra-value rating-stars readonly" data-stars="${item.starRating}"></div>`
-      : item.editableDateField
-        ? `<span class="hero-extra-value hero-extra-value-editable" data-date-field="${item.editableDateField}" data-raw-date="${item.rawDate}" title="Click to change">${escapeHTML(item.value)} ✎</span>`
-        : `<span class="hero-extra-value">${escapeHTML(item.value)}</span>`}
+      ? `<div class="rating-stars readonly" data-stars="${item.starRating}"></div>`
+      : item.statusBadge
+        ? `<span class="status-badge" style="color:${statusColor(item.statusBadge)}">${escapeHTML(item.statusBadge)}</span>`
+        : item.editableDateField
+          ? `<span class="hero-extra-value hero-extra-value-editable" data-date-field="${item.editableDateField}" data-raw-date="${item.rawDate}" title="Click to change">${escapeHTML(item.value)} ✎</span>`
+          : `<span class="hero-extra-value">${escapeHTML(item.value)}</span>`}
     </div>
   `).join('');
 
-  grid.querySelectorAll('.rating-stars[data-stars]').forEach(elm => {
+  dom.heroDetailsLeft.querySelectorAll('.rating-stars[data-stars]').forEach(elm => {
     renderRatingStars(elm, parseInt(elm.dataset.stars), { readonly: true });
   });
 
   // Click a date value to swap it for a live date picker in place —
   // avoids opening the full Edit modal just to nudge a date by a day.
-  grid.querySelectorAll('.hero-extra-value-editable').forEach(span => {
+  dom.heroDetailsLeft.querySelectorAll('.hero-extra-value-editable').forEach(span => {
     span.addEventListener('click', () => {
       const field = span.dataset.dateField;
       const input = document.createElement('input');
