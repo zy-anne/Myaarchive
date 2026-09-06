@@ -14,7 +14,7 @@ require('dotenv').config({
 // Line 14 in main.js:
 const { createDesktopClient, removeLocalReplicaFiles } = require('./data-layer/client');
 const dataLayer = require('./data-layer');
-const { ensureUsersTable, signUp, signIn, userExists, verifyPassword, changePassword } = require('./auth/localAuth.js');
+const { ensureUsersTable, signUp, signIn, userExists, verifyPassword, changePassword, ensureSecurityQuestionColumns, getSecurityQuestion, resetPasswordWithSecurityAnswer, getOwnSecurityQuestion, setSecurityQuestion } = require('./auth/localAuth.js');
 const { createR2Client, makeKey, uploadBuffer, deleteObject, downloadBuffer } = require('./storage/r2');
 const { getOrDownload, evictIfOverLimit } = require('./storage/cache');
 
@@ -76,6 +76,7 @@ async function ensureDefaultLibrary(ownerId) {
 
 async function bootstrapSchema() {
   await ensureUsersTable(db);
+  await ensureSecurityQuestionColumns(db);
   await dataLayer.ensureTagsTableIsHealthy(db);
   // Tags and statuses need migration logic (upgrading an old global table
   // shape to the current per-user one), so they're bootstrapped
@@ -203,9 +204,9 @@ if (!gotLock) {
 // between accounts is enforced entirely by owner_id scoping in the data
 // layer, not by separate infrastructure per person.
 
-handle('auth:signUp', async (_, username, password) => {
+handle('auth:signUp', async (_, username, password, securityQuestion, securityAnswer) => {
   try {
-    const user = await signUp(db, username, password);
+    const user = await signUp(db, username, password, securityQuestion, securityAnswer);
     currentUser = user;
     saveSession(user);
     await ensureDefaultLibrary(user.id);
@@ -233,6 +234,25 @@ ipcMain.handle('auth:signOut', () => {
 });
 ipcMain.handle('auth:currentUser', () => currentUser);
 
+// ─── Password Recovery (public — no sign-in required) ───────────────────
+handle('auth:getSecurityQuestion', async (_, username) => {
+  try {
+    const question = await getSecurityQuestion(db, username);
+    if (!question) return { ok: false, error: 'No recovery method is set up for this account' };
+    return { ok: true, question };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+handle('auth:resetPassword', async (_, username, answer, newPassword) => {
+  try {
+    await resetPasswordWithSecurityAnswer(db, username, answer, newPassword);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 function requireUser() {
   if (!currentUser) throw new Error('Not signed in');
   return currentUser.id;
@@ -247,6 +267,21 @@ handle('account:changePassword', async (_, currentPassword, newPassword) => {
   const userId = requireUser();
   try {
     await changePassword(db, userId, currentPassword, newPassword);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+handle('account:getSecurityQuestion', async () => {
+  const userId = requireUser();
+  const question = await getOwnSecurityQuestion(db, userId);
+  return { question };
+});
+handle('account:setSecurityQuestion', async (_, currentPassword, question, answer) => {
+  const userId = requireUser();
+  try {
+    await setSecurityQuestion(db, userId, currentPassword, question, answer);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message };

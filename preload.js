@@ -12,14 +12,19 @@ contextBridge.exposeInMainWorld('initialTheme', themeArg ? themeArg.split('=')[1
 
 contextBridge.exposeInMainWorld('api', {
   auth: {
-    signUp: (username, password) => invoke('auth:signUp', username, password),
+    signUp: (username, password, securityQuestion, securityAnswer) =>
+      invoke('auth:signUp', username, password, securityQuestion, securityAnswer),
     signIn: (username, password) => invoke('auth:signIn', username, password),
     signOut: () => invoke('auth:signOut'),
     currentUser: () => invoke('auth:currentUser'),
+    getSecurityQuestion: (username) => invoke('auth:getSecurityQuestion', username),
+    resetPassword: (username, answer, newPassword) => invoke('auth:resetPassword', username, answer, newPassword),
   },
   account: {
     delete: (password) => invoke('account:delete', password),
     changePassword: (currentPassword, newPassword) => invoke('account:changePassword', currentPassword, newPassword),
+    getSecurityQuestion: () => invoke('account:getSecurityQuestion'),
+    setSecurityQuestion: (currentPassword, question, answer) => invoke('account:setSecurityQuestion', currentPassword, question, answer),
   },
   series: {
     getAll: (f) => invoke('series:getAll', f),

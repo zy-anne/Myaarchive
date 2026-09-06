@@ -567,6 +567,8 @@ async function openUserSettingsModal() {
     c.classList.toggle('active', c.dataset.theme === state.theme);
   });
 
+  await refreshSecurityQuestionStatus();
+
   renderDefaultStartViewOptions();
 
   const settings = await window.api.settings.getAll();
@@ -613,6 +615,55 @@ function updateChangePasswordButtonState() {
   const confirm = el('f-change-password-confirm').value;
   const valid = current.length > 0 && next.length >= 4 && next === confirm;
   el('btn-confirm-change-password').disabled = !valid;
+}
+
+// ─── Security Question (User Settings + recovery source of truth) ───────
+
+async function refreshSecurityQuestionStatus() {
+  const { question } = await window.api.account.getSecurityQuestion();
+  const label = el('settings-security-question-status');
+  const btn = el('btn-open-security-question');
+  if (question) {
+    label.textContent = `Set: "${question}"`;
+    btn.textContent = 'Update…';
+  } else {
+    label.textContent = 'Not set up — add one so you can recover your account if you forget your password.';
+    btn.textContent = 'Set Up…';
+  }
+}
+
+function openSecurityQuestionModal() {
+  el('f-security-question').value = '';
+  el('f-security-answer').value = '';
+  el('f-security-current-password').value = '';
+  el('security-question-error').textContent = '';
+  openModal('overlay-security-question');
+  el('f-security-question').focus();
+}
+
+async function handleSecurityQuestionSubmit() {
+  const question = el('f-security-question').value.trim();
+  const answer = el('f-security-answer').value.trim();
+  const currentPassword = el('f-security-current-password').value;
+  const errorEl = el('security-question-error');
+  errorEl.textContent = '';
+  if (!question || !answer) { errorEl.textContent = 'Both a question and answer are required'; return; }
+
+  const btn = el('btn-confirm-security-question');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    const result = await window.api.account.setSecurityQuestion(currentPassword, question, answer);
+    if (!result.ok) { errorEl.textContent = result.error || 'Could not save'; return; }
+    toast('Security question saved');
+    closeModal('overlay-security-question');
+    await refreshSecurityQuestionStatus();
+  } catch (e) {
+    errorEl.textContent = e.message || 'Could not save';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save';
+  }
 }
 
 async function handleChangePasswordSubmit() {
@@ -743,6 +794,10 @@ function bindEvents() {
   el('f-change-password-new')?.addEventListener('input', updateChangePasswordButtonState);
   el('f-change-password-confirm')?.addEventListener('input', updateChangePasswordButtonState);
   el('btn-confirm-change-password')?.addEventListener('click', handleChangePasswordSubmit);
+
+  // Security Question
+  el('btn-open-security-question')?.addEventListener('click', openSecurityQuestionModal);
+  el('btn-confirm-security-question')?.addEventListener('click', handleSecurityQuestionSubmit);
 
   // Danger Zone: Delete Account
   el('btn-open-delete-account')?.addEventListener('click', openDeleteAccountModal);
@@ -4608,6 +4663,7 @@ el('btn-auth-toggle').addEventListener('click', () => {
   authMode = authMode === 'signin' ? 'signup' : 'signin';
   el('btn-auth-submit').textContent = authMode === 'signin' ? 'Sign In' : 'Sign Up';
   el('btn-auth-toggle').textContent = authMode === 'signin' ? 'Need an account? Sign Up' : 'Have an account? Sign In';
+  el('signup-security-fields').classList.toggle('hidden', authMode !== 'signup');
   el('auth-gate-status').textContent = '';
 });
 
@@ -4619,7 +4675,11 @@ el('auth-form').addEventListener('submit', async (e) => {
 
   const result = authMode === 'signin'
     ? await window.api.auth.signIn(username, password)
-    : await window.api.auth.signUp(username, password);
+    : await window.api.auth.signUp(
+      username, password,
+      el('signup-security-question').value.trim(),
+      el('signup-security-answer').value.trim()
+    );
 
   if (result.ok) {
     showApp();
@@ -4627,6 +4687,74 @@ el('auth-form').addEventListener('submit', async (e) => {
   } else {
     el('auth-gate-status').textContent = result.error;
   }
+});
+
+// ─── Password Recovery (Forgot Password flow) ────────────────────────────
+
+let recoveryUsername = '';
+
+function showRecoveryCard() {
+  el('signin-card').classList.add('hidden');
+  el('recovery-card').classList.remove('hidden');
+  el('recovery-step-username').classList.remove('hidden');
+  el('recovery-step-answer').classList.add('hidden');
+  el('recovery-username').value = '';
+  el('recovery-answer').value = '';
+  el('recovery-new-password').value = '';
+  el('recovery-confirm-password').value = '';
+  el('recovery-status').textContent = '';
+}
+
+function showSigninCard() {
+  el('recovery-card').classList.add('hidden');
+  el('signin-card').classList.remove('hidden');
+}
+
+el('btn-forgot-password').addEventListener('click', showRecoveryCard);
+el('btn-recovery-cancel-1').addEventListener('click', showSigninCard);
+el('btn-recovery-cancel-2').addEventListener('click', () => {
+  el('recovery-step-answer').classList.add('hidden');
+  el('recovery-step-username').classList.remove('hidden');
+  el('recovery-status').textContent = '';
+});
+
+el('btn-recovery-lookup').addEventListener('click', async () => {
+  const username = el('recovery-username').value.trim();
+  if (!username) return;
+  el('recovery-status').textContent = 'Checking…';
+  const result = await window.api.auth.getSecurityQuestion(username);
+  if (!result.ok) {
+    el('recovery-status').textContent = result.error;
+    return;
+  }
+  recoveryUsername = username;
+  el('recovery-question-display').textContent = result.question;
+  el('recovery-step-username').classList.add('hidden');
+  el('recovery-step-answer').classList.remove('hidden');
+  el('recovery-status').textContent = '';
+});
+
+el('btn-recovery-submit').addEventListener('click', async () => {
+  const answer = el('recovery-answer').value;
+  const newPassword = el('recovery-new-password').value;
+  const confirm = el('recovery-confirm-password').value;
+  if (newPassword !== confirm) {
+    el('recovery-status').textContent = "New passwords don't match";
+    return;
+  }
+  el('recovery-status').textContent = 'Resetting…';
+  const result = await window.api.auth.resetPassword(recoveryUsername, answer, newPassword);
+  if (!result.ok) {
+    el('recovery-status').textContent = result.error;
+    return;
+  }
+  el('recovery-status').textContent = 'Password reset — you can sign in now.';
+  setTimeout(() => {
+    showSigninCard();
+    el('auth-username').value = recoveryUsername;
+    el('auth-password').value = '';
+    el('auth-gate-status').textContent = 'Password reset successfully. Sign in with your new password.';
+  }, 1200);
 });
 
 // ─── Run ──────────────────────────────────────────────────────────────────────

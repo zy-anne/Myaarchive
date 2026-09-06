@@ -24,16 +24,50 @@
        this sits on top of everything, full-screen, and is hidden once
        auth:signedIn fires. -->
   <div id="auth-gate">
-    <div class="auth-gate-card">
+    <div class="auth-gate-card" id="signin-card">
       <span class="brand-name">Myaarchive</span>
       <form id="auth-form" class="auth-form">
         <input id="auth-username" type="text" placeholder="Username" maxlength="50" autocomplete="username" required>
         <input id="auth-password" type="password" placeholder="Password" maxlength="200" autocomplete="current-password"
           required>
+        <!-- Only shown in Sign Up mode (toggled via app.js) — optional,
+             enables "Forgot password?" recovery for this account later. -->
+        <div class="auth-form hidden" id="signup-security-fields">
+          <input id="signup-security-question" type="text"
+            placeholder="Security question (optional — enables password recovery)" maxlength="200" autocomplete="off">
+          <input id="signup-security-answer" type="text" placeholder="Answer" maxlength="200" autocomplete="off">
+        </div>
         <button type="submit" class="btn btn-primary" id="btn-auth-submit">Sign In</button>
         <button type="button" class="btn btn-ghost" id="btn-auth-toggle">Need an account? Sign Up</button>
+        <button type="button" class="btn btn-ghost" id="btn-forgot-password">Forgot password?</button>
       </form>
       <p id="auth-gate-status">Sign in to sync your library across devices.</p>
+    </div>
+
+    <!-- Password Recovery — a second card swapped in place of the sign-in
+         card, rather than a modal, since #auth-gate sits outside #app and
+         the modal system assumes the app shell is already loaded. -->
+    <div class="auth-gate-card hidden" id="recovery-card">
+      <span class="brand-name">Myaarchive</span>
+
+      <div class="auth-form" id="recovery-step-username">
+        <input id="recovery-username" type="text" placeholder="Username" maxlength="50" autocomplete="username">
+        <button type="button" class="btn btn-primary" id="btn-recovery-lookup">Continue</button>
+        <button type="button" class="btn btn-ghost" id="btn-recovery-cancel-1">Back to Sign In</button>
+      </div>
+
+      <div class="auth-form hidden" id="recovery-step-answer">
+        <p class="form-hint" id="recovery-question-display"></p>
+        <input id="recovery-answer" type="text" placeholder="Your answer" maxlength="200" autocomplete="off">
+        <input id="recovery-new-password" type="password" placeholder="New password" maxlength="200"
+          autocomplete="new-password">
+        <input id="recovery-confirm-password" type="password" placeholder="Confirm new password" maxlength="200"
+          autocomplete="new-password">
+        <button type="button" class="btn btn-primary" id="btn-recovery-submit">Reset Password</button>
+        <button type="button" class="btn btn-ghost" id="btn-recovery-cancel-2">Back</button>
+      </div>
+
+      <p id="recovery-status"></p>
     </div>
   </div>
 
@@ -619,133 +653,134 @@
           <summary>Additional Details</summary>
           <div class="details-section-body">
             <div class="form-row">
-              <label for="f-s-booktype">Book Type</label>
-              <input id="f-s-booktype" type="text" list="book-type-options" placeholder="e.g. Web Novel" maxlength="100"
-                autocomplete="off">
-              <datalist id="book-type-options">
-                <option value="Novel">
-                <option value="Light Novel">
-                <option value="Web Novel">
-                <option value="Graphic Novel">
-                <option value="Manga">
-                <option value="Manhwa">
-                <option value="Manhua">
-                <option value="Comic">
-              </datalist>
+              <div class="form-group">
+                <label for="f-s-booktype">Book Type</label>
+                <input id="f-s-booktype" type="text" list="book-type-options" placeholder="e.g. Web Novel"
+                  maxlength="100" autocomplete="off">
+                <datalist id="book-type-options">
+                  <option value="Novel">
+                  <option value="Light Novel">
+                  <option value="Web Novel">
+                  <option value="Graphic Novel">
+                  <option value="Manga">
+                  <option value="Manhwa">
+                  <option value="Manhua">
+                  <option value="Comic">
+                </datalist>
+              </div>
             </div>
-          </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label for="f-s-date-started">Date Started</label>
-              <input id="f-s-date-started" type="date">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-date-started">Date Started</label>
+                <input id="f-s-date-started" type="date">
+              </div>
+              <div class="form-group">
+                <label for="f-s-date-finished">Date Finished</label>
+                <input id="f-s-date-finished" type="date">
+              </div>
             </div>
-            <div class="form-group">
-              <label for="f-s-date-finished">Date Finished</label>
-              <input id="f-s-date-finished" type="date">
-            </div>
-          </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label for="f-s-artist">Artist(s)</label>
-              <input id="f-s-artist" type="text" placeholder="e.g. Takeshi Obata" maxlength="300">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-artist">Artist(s)</label>
+                <input id="f-s-artist" type="text" placeholder="e.g. Takeshi Obata" maxlength="300">
+              </div>
+              <div class="form-group">
+                <label for="f-s-year-pub">Year Published</label>
+                <input id="f-s-year-pub" type="text" placeholder="e.g. 2019" maxlength="20" inputmode="numeric">
+              </div>
             </div>
-            <div class="form-group">
-              <label for="f-s-year-pub">Year Published</label>
-              <input id="f-s-year-pub" type="text" placeholder="e.g. 2019" maxlength="20" inputmode="numeric">
-            </div>
-          </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label for="f-s-orig-lang">Original Language</label>
-              <input id="f-s-orig-lang" type="text" list="orig-lang-options" placeholder="e.g. Japanese" maxlength="100"
-                autocomplete="off">
-              <datalist id="orig-lang-options">
-                <option value="Japanese">
-                <option value="Korean">
-                <option value="Chinese">
-                <option value="English">
-              </datalist>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-orig-lang">Original Language</label>
+                <input id="f-s-orig-lang" type="text" list="orig-lang-options" placeholder="e.g. Japanese"
+                  maxlength="100" autocomplete="off">
+                <datalist id="orig-lang-options">
+                  <option value="Japanese">
+                  <option value="Korean">
+                  <option value="Chinese">
+                  <option value="English">
+                </datalist>
+              </div>
+              <div class="form-group">
+                <label for="f-s-origin-country">Country of Origin</label>
+                <input id="f-s-origin-country" type="text" list="origin-country-options" placeholder="e.g. Japan"
+                  maxlength="100" autocomplete="off">
+                <datalist id="origin-country-options">
+                  <option value="Japan">
+                  <option value="South Korea">
+                  <option value="China">
+                </datalist>
+              </div>
             </div>
-            <div class="form-group">
-              <label for="f-s-origin-country">Country of Origin</label>
-              <input id="f-s-origin-country" type="text" list="origin-country-options" placeholder="e.g. Japan"
-                maxlength="100" autocomplete="off">
-              <datalist id="origin-country-options">
-                <option value="Japan">
-                <option value="South Korea">
-                <option value="China">
-              </datalist>
-            </div>
-          </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label for="f-s-lang-read">Language Read</label>
-              <input id="f-s-lang-read" type="text" placeholder="English" value="English" maxlength="100">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-lang-read">Language Read</label>
+                <input id="f-s-lang-read" type="text" placeholder="English" value="English" maxlength="100">
+              </div>
+              <div class="form-group">
+                <label for="f-s-status-origin">Status in Country of Origin</label>
+                <input id="f-s-status-origin" type="text" list="origin-status-options" placeholder="e.g. Ongoing"
+                  maxlength="100" autocomplete="off">
+                <datalist id="origin-status-options">
+                  <option value="Ongoing">
+                  <option value="Completed">
+                  <option value="Hiatus">
+                  <option value="Cancelled">
+                </datalist>
+              </div>
             </div>
-            <div class="form-group">
-              <label for="f-s-status-origin">Status in Country of Origin</label>
-              <input id="f-s-status-origin" type="text" list="origin-status-options" placeholder="e.g. Ongoing"
-                maxlength="100" autocomplete="on">
-              <datalist id="origin-status-options">
-                <option value="Ongoing">
-                <option value="Completed">
-                <option value="Hiatus">
-                <option value="Cancelled">
-              </datalist>
-            </div>
-          </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label for="f-s-licensed">Licensed to English?</label>
-              <select id="f-s-licensed">
-                <option value="">Unknown</option>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-licensed">Licensed to English?</label>
+                <select id="f-s-licensed">
+                  <option value="">Unknown</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="f-s-translated">Completely Translated?</label>
+                <select id="f-s-translated">
+                  <option value="">Unknown</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </div>
             </div>
-            <div class="form-group">
-              <label for="f-s-translated">Completely Translated?</label>
-              <select id="f-s-translated">
-                <option value="">Unknown</option>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
-            </div>
-          </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label for="f-s-orig-publisher">Original Publisher</label>
-              <input id="f-s-orig-publisher" type="text" placeholder="e.g. Shueisha" maxlength="200">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-orig-publisher">Original Publisher</label>
+                <input id="f-s-orig-publisher" type="text" placeholder="e.g. Shueisha" maxlength="200">
+              </div>
+              <div class="form-group">
+                <label for="f-s-eng-publisher">English Publisher</label>
+                <input id="f-s-eng-publisher" type="text" placeholder="e.g. Viz Media" maxlength="200">
+              </div>
             </div>
-            <div class="form-group">
-              <label for="f-s-eng-publisher">English Publisher</label>
-              <input id="f-s-eng-publisher" type="text" placeholder="e.g. Viz Media" maxlength="200">
-            </div>
-          </div>
 
-          <div class="form-row">
-            <div class="form-group">
-              <label for="f-s-nsfw">NSFW Content?</label>
-              <select id="f-s-nsfw">
-                <option value="0">No</option>
-                <option value="1">Yes</option>
-              </select>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="f-s-nsfw">NSFW Content?</label>
+                <select id="f-s-nsfw">
+                  <option value="0">No</option>
+                  <option value="1">Yes</option>
+                </select>
+              </div>
             </div>
           </div>
+        </details>
       </div>
-      </details>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-series">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-series">Save</button>
+      </div>
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" data-close="overlay-series">Cancel</button>
-      <button class="btn btn-primary" id="btn-save-series">Save</button>
-    </div>
-  </div>
   </div>
 
   <!-- Standalone Thoughts -->
@@ -1281,6 +1316,15 @@
             </div>
             <button class="btn btn-secondary btn-sm" id="btn-open-change-password">Change Password…</button>
           </div>
+
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <div class="settings-row-label">Security Question</div>
+              <div class="settings-row-desc" id="settings-security-question-status">Not set up — add one so you can
+                recover your account if you forget your password.</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-open-security-question">Set Up…</button>
+          </div>
         </div>
 
         <!-- Layout & Navigation -->
@@ -1377,6 +1421,37 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" data-close="overlay-change-password">Cancel</button>
         <button class="btn btn-primary" id="btn-confirm-change-password" disabled>Update Password</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Security Question Modal -->
+  <div class="overlay hidden" id="overlay-security-question">
+    <div class="modal modal-sm" id="modal-security-question">
+      <div class="modal-header">
+        <h2>Security Question</h2>
+        <button class="close-btn" data-close="overlay-security-question">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="form-hint">Used to reset your password if you forget it. Choose an answer only you would know.</p>
+        <div class="form-group">
+          <label for="f-security-question">Question</label>
+          <input id="f-security-question" type="text" placeholder="e.g. What was your first pet's name?" maxlength="200"
+            autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label for="f-security-answer">Answer</label>
+          <input id="f-security-answer" type="text" maxlength="200" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label for="f-security-current-password">Current Password</label>
+          <input id="f-security-current-password" type="password" autocomplete="current-password">
+        </div>
+        <p class="form-hint" id="security-question-error"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-security-question">Cancel</button>
+        <button class="btn btn-primary" id="btn-confirm-security-question">Save</button>
       </div>
     </div>
   </div>

@@ -18,7 +18,23 @@ async function ensureUsersTable(db) {
   `);
 }
 
-async function signUp(db, username, password) {
+// Additive migration for password recovery — a security question is
+// optional (NULL for anyone who signed up before this existed, or who
+// skipped it), so recovery just isn't available for those accounts until
+// they set one up via User Settings. The answer is hashed the same way a
+// password is; only the question itself is ever shown in plaintext.
+async function ensureSecurityQuestionColumns(db) {
+    const info = await db.execute(`PRAGMA table_info(users)`);
+    const existing = new Set(info.rows.map(r => r.name));
+    if (!existing.has('security_question')) {
+        await db.execute(`ALTER TABLE users ADD COLUMN security_question TEXT`);
+    }
+    if (!existing.has('security_answer_hash')) {
+        await db.execute(`ALTER TABLE users ADD COLUMN security_answer_hash TEXT`);
+    }
+}
+
+async function signUp(db, username, password, securityQuestion, securityAnswer) {
     username = (username || '').trim();
     if (username.length < 3) throw new Error('Username must be at least 3 characters');
     if (!password || password.length < 4) throw new Error('Password must be at least 4 characters');
@@ -28,9 +44,21 @@ async function signUp(db, username, password) {
 
     const id = crypto.randomUUID();
     const hash = await bcrypt.hash(password, 10);
+
+    // Optional at sign-up — a blank question/answer just means "set this
+    // up later in User Settings" rather than blocking account creation.
+    let questionText = null;
+    let answerHash = null;
+    const trimmedQuestion = (securityQuestion || '').trim();
+    const trimmedAnswer = (securityAnswer || '').trim();
+    if (trimmedQuestion && trimmedAnswer) {
+        questionText = trimmedQuestion;
+        answerHash = await bcrypt.hash(trimmedAnswer.toLowerCase(), 10);
+    }
+
     await db.execute({
-        sql: 'INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)',
-        args: [id, username, hash],
+        sql: 'INSERT INTO users (id, username, password_hash, security_question, security_answer_hash) VALUES (?, ?, ?, ?, ?)',
+        args: [id, username, hash, questionText, answerHash],
     });
     return { id, username };
 }
@@ -74,4 +102,55 @@ async function changePassword(db, userId, currentPassword, newPassword) {
     return true;
 }
 
-module.exports = { ensureUsersTable, signUp, signIn, userExists, verifyPassword, changePassword };
+// Public lookup (no auth required — this is the whole point of a recovery
+// flow) used by the "Forgot password?" screen to fetch just the question
+// text, never the answer hash, for a given username.
+async function getSecurityQuestion(db, username) {
+    username = (username || '').trim();
+    const row = (await db.execute({ sql: 'SELECT security_question FROM users WHERE username = ?', args: [username] })).rows[0];
+    if (!row || !row.security_question) return null;
+    return row.security_question;
+}
+
+// Verifies the answer against the stored hash and, if correct, resets the
+// password — the actual recovery step. Case-insensitive on the answer
+// (lowercased both at set-time and here) since people are inconsistent
+// about capitalizing answers like "Fluffy" vs "fluffy".
+async function resetPasswordWithSecurityAnswer(db, username, answer, newPassword) {
+    username = (username || '').trim();
+    if (!newPassword || newPassword.length < 4) throw new Error('New password must be at least 4 characters');
+    const row = (await db.execute({ sql: 'SELECT id, security_answer_hash FROM users WHERE username = ?', args: [username] })).rows[0];
+    if (!row || !row.security_answer_hash) throw new Error('No recovery method is set up for this account');
+    const ok = await bcrypt.compare((answer || '').trim().toLowerCase(), row.security_answer_hash);
+    if (!ok) throw new Error('That answer is incorrect');
+    const hash = await bcrypt.hash(newPassword, 10);
+    await db.execute({ sql: 'UPDATE users SET password_hash = ? WHERE id = ?', args: [hash, row.id] });
+    return true;
+}
+
+// For User Settings — shows the signed-in user their own question (so
+// they can see whether one is set, and what it currently says) without
+// exposing the answer hash.
+async function getOwnSecurityQuestion(db, userId) {
+    const row = (await db.execute({ sql: 'SELECT security_question FROM users WHERE id = ?', args: [userId] })).rows[0];
+    return row?.security_question || null;
+}
+
+// Set or update the question/answer from inside User Settings — gated
+// behind the current password, same "re-verify even though already
+// signed in" rationale as changePassword/verifyPassword above.
+async function setSecurityQuestion(db, userId, currentPassword, question, answer) {
+    const trimmedQuestion = (question || '').trim();
+    const trimmedAnswer = (answer || '').trim();
+    if (!trimmedQuestion || !trimmedAnswer) throw new Error('Both a question and answer are required');
+    const ok = await verifyPassword(db, userId, currentPassword);
+    if (!ok) throw new Error('Current password is incorrect');
+    const answerHash = await bcrypt.hash(trimmedAnswer.toLowerCase(), 10);
+    await db.execute({ sql: 'UPDATE users SET security_question = ?, security_answer_hash = ? WHERE id = ?', args: [trimmedQuestion, answerHash, userId] });
+    return true;
+}
+
+module.exports = {
+    ensureUsersTable, ensureSecurityQuestionColumns, signUp, signIn, userExists, verifyPassword, changePassword,
+    getSecurityQuestion, resetPasswordWithSecurityAnswer, getOwnSecurityQuestion, setSecurityQuestion,
+};
