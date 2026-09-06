@@ -495,6 +495,13 @@ handle('attachments:delete', async (_, id) => {
   return true;
 });
 
+// ─── IPC: Link Attachments (plain URLs, no storage involved) ──────────────
+handle('links:getBySeries', (_, sid) => dataLayer.links.getBySeries(db, sid));
+handle('links:add', (_, d) => dataLayer.links.add(db, d));
+handle('links:update', (_, id, d) => dataLayer.links.update(db, id, d));
+handle('links:delete', (_, id) => dataLayer.links.delete(db, id));
+
+
 // ─── IPC: Images (covers, portraits, nav icons, gallery) — now R2-backed ───
 // `category` becomes the R2 key prefix (e.g. 'covers', 'char', 'gallery',
 // 'navicon') — matches the naming convention documented in storage/r2.js.

@@ -2028,6 +2028,10 @@ tbody tr:hover {
   color: transparent;
 }
 
+.file-icon-link {
+  color: var(--accent);
+}
+
 .file-info {
   flex: 1;
   min-width: 0;

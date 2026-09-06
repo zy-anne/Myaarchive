@@ -7,6 +7,7 @@ let state = {
   relationships: [],
   galleryImages: [],
   attachments: [],
+  linkAttachments: [],
   currentGalleryImage: null,
   allTags: [],
   selectedTags: [],
@@ -1232,6 +1233,9 @@ function bindEvents() {
     if (paths && paths.length > 0) await addAttachmentFiles(paths);
   });
   setupMultiDropZone(dom.filesList, addAttachmentFiles, { maxSizeBytes: MAX_ATTACHMENT_SIZE_BYTES });
+
+  el('btn-add-link').addEventListener('click', () => openLinkModal());
+  el('btn-save-link').addEventListener('click', saveLink);
 
   // Relationship Actions
   el('btn-add-rel-drawer').addEventListener('click', () => openRelModal());
@@ -2684,6 +2688,7 @@ async function loadSeriesData(id) {
   state.relationships = await window.api.relationships.getBySeries(id);
   state.galleryImages = await window.api.gallery.getBySeries(id);
   state.attachments = await window.api.attachments.getBySeries(id);
+  state.linkAttachments = await window.api.links.getBySeries(id);
 
   renderSeriesHero(s);
   renderCharacters();
@@ -2709,7 +2714,7 @@ async function loadSeriesData(id) {
   dom.volCount.textContent = state.volumes.length;
   dom.charCount.textContent = state.characters.length;
   dom.galleryCount.textContent = state.galleryImages.length;
-  dom.filesCount.textContent = state.attachments.length;
+  dom.filesCount.textContent = state.attachments.length + state.linkAttachments.length;
 }
 
 function renderSeriesHero(s) {
@@ -4388,16 +4393,17 @@ async function addAttachmentFiles(paths) {
 }
 
 function renderFiles() {
-  if (state.attachments.length === 0) {
-    dom.filesList.innerHTML = `<div class="empty-state"><h3>No files yet</h3><p>Attach PDFs, notes, or other files related to this title.</p></div>`;
+  const hasAnything = state.attachments.length > 0 || state.linkAttachments.length > 0;
+  if (!hasAnything) {
+    dom.filesList.innerHTML = `<div class="empty-state"><h3>No files yet</h3><p>Attach PDFs, notes, links, or other resources related to this title.</p></div>`;
     return;
   }
 
-  dom.filesList.innerHTML = state.attachments.map(f => {
+  const fileRows = state.attachments.map(f => {
     const category = fileCategory(f.file_name);
     const ext = (f.file_name.split('.').pop() || '?').toUpperCase();
     return `
-      <div class="file-row" data-id="${f.id}">
+      <div class="file-row" data-id="${f.id}" data-kind="file">
         <div class="file-icon file-icon-${category}" data-category="${category}" data-path="${escapeHTML(f.file_path)}">
           ${category === 'generic'
         ? `${fileIconSvg('generic')}<span class="file-icon-ext">${escapeHTML(ext.slice(0, 4))}</span>`
@@ -4413,7 +4419,40 @@ function renderFiles() {
         </div>
       </div>
     `;
-  }).join('');
+  });
+
+  // Links reuse the same .file-row shape for visual consistency, with a
+  // distinct link glyph and their own edit/delete actions. displayLabel
+  // falls back to a shortened hostname when no label was given, so the
+  // row never shows a bare, hard-to-scan raw URL as its title.
+  const linkRows = state.linkAttachments.map(l => {
+    let displayLabel = l.label;
+    if (!displayLabel) {
+      try { displayLabel = new URL(l.url).hostname.replace(/^www\./, ''); }
+      catch { displayLabel = l.url; }
+    }
+    return `
+      <div class="file-row" data-id="${l.id}" data-kind="link">
+        <div class="file-icon file-icon-link">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+        </div>
+        <div class="file-info">
+          <div class="file-name">${escapeHTML(displayLabel)}</div>
+          <div class="file-meta">${escapeHTML(l.url)}</div>
+        </div>
+        <div class="file-actions">
+          <button class="btn btn-ghost btn-sm link-open-btn" data-id="${l.id}">Open</button>
+          <button class="btn btn-ghost btn-sm link-edit-btn" data-id="${l.id}">Edit</button>
+          <button class="btn btn-danger-ghost btn-sm link-delete-btn" data-id="${l.id}">Delete</button>
+        </div>
+      </div>
+    `;
+  });
+
+  dom.filesList.innerHTML = [...linkRows, ...fileRows].join('');
 
   // Image attachments get a real thumbnail instead of the generic image
   // glyph, loaded async since reading the file is an IPC round-trip.
@@ -4448,6 +4487,65 @@ function renderFiles() {
       });
     });
   });
+
+  dom.filesList.querySelectorAll('.link-open-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const l = state.linkAttachments.find(x => x.id == btn.dataset.id);
+      if (l) window.open(l.url, '_blank', 'noopener,noreferrer');
+    });
+  });
+  dom.filesList.querySelectorAll('.link-edit-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const l = state.linkAttachments.find(x => x.id == btn.dataset.id);
+      if (l) openLinkModal(l);
+    });
+  });
+  dom.filesList.querySelectorAll('.link-delete-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const l = state.linkAttachments.find(x => x.id == btn.dataset.id);
+      if (!l) return;
+      confirmDelete(`Delete this link?`, async () => {
+        await window.api.links.delete(l.id);
+        toast('Link deleted');
+        await loadSeriesData(state.currentSeries.id);
+      });
+    });
+  });
+}
+
+let editingLink = null;
+
+function openLinkModal(link = null) {
+  editingLink = link;
+  el('modal-link-title').textContent = link ? 'Edit Link' : 'Add Link';
+  el('f-link-url').value = link?.url || '';
+  el('f-link-label').value = link?.label || '';
+  openModal('overlay-link');
+  el('f-link-url').focus();
+}
+
+async function saveLink() {
+  let url = el('f-link-url').value.trim();
+  if (!url) return toast('URL is required', true);
+  // Bare domains/paths (no scheme) are treated as https:// — matches how
+  // most people type a link without thinking about the protocol prefix.
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+
+  const d = { series_id: state.currentSeries.id, url, label: el('f-link-label').value.trim() };
+
+  if (editingLink) {
+    await window.api.links.update(editingLink.id, d);
+    toast('Link updated');
+  } else {
+    await window.api.links.add(d);
+    toast('Link added');
+  }
+  editingLink = null;
+  closeModal('overlay-link');
+  await loadSeriesData(state.currentSeries.id);
 }
 
 // ─── Relationships ────────────────────────────────────────────────────────────

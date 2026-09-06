@@ -675,6 +675,26 @@ async function attachmentsDelete(db, id) {
   return row;
 }
 
+// ─── Link Attachments (external URLs, no upload/storage involved) ──────
+
+async function linksGetBySeries(db, seriesId) {
+  return q(db, `SELECT * FROM link_attachments WHERE series_id = ? ORDER BY created_at DESC, id DESC`, [seriesId]);
+}
+async function linksAdd(db, d) {
+  const r = await run(db, `
+    INSERT INTO link_attachments (series_id, url, label) VALUES (?, ?, ?)
+  `, [d.series_id, d.url, d.label || null]);
+  return Number(r.lastInsertRowid);
+}
+async function linksUpdate(db, id, d) {
+  await run(db, `UPDATE link_attachments SET url=?, label=? WHERE id=?`, [d.url, d.label || null, id]);
+  return true;
+}
+async function linksDelete(db, id) {
+  await run(db, `DELETE FROM link_attachments WHERE id = ?`, [id]);
+  return true;
+}
+
 // ─── Statuses (per-user, customizable reading statuses) ────────────────
 // series.status keeps storing the plain name (not a foreign key). Renaming
 // a status cascades to that same user's series using the old name.
@@ -1052,6 +1072,15 @@ async function ensureCoreSchema(db) {
     )
   `);
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS link_attachments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      series_id INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      label TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS series_groups (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       library_id INTEGER NOT NULL,
@@ -1332,6 +1361,7 @@ async function accountDelete(db, ownerId) {
         await tx.execute({ sql: `DELETE FROM volumes WHERE series_id IN (${sph})`, args: seriesIds });
         await tx.execute({ sql: `DELETE FROM gallery_images WHERE series_id IN (${sph})`, args: seriesIds });
         await tx.execute({ sql: `DELETE FROM attachments WHERE series_id IN (${sph})`, args: seriesIds });
+        await tx.execute({ sql: `DELETE FROM link_attachments WHERE series_id IN (${sph})`, args: seriesIds });
         await tx.execute({ sql: `DELETE FROM series_tags WHERE series_id IN (${sph})`, args: seriesIds });
         await tx.execute({ sql: `DELETE FROM series_genres WHERE series_id IN (${sph})`, args: seriesIds });
         await tx.execute({ sql: `DELETE FROM series_content_warnings WHERE series_id IN (${sph})`, args: seriesIds });
@@ -1408,5 +1438,6 @@ module.exports = {
   },
   gallery: { getBySeries: galleryGetBySeries, add: galleryAdd, updateCaption: galleryUpdateCaption, delete: galleryDelete, reorder: galleryReorder },
   attachments: { getBySeries: attachmentsGetBySeries, add: attachmentsAdd, delete: attachmentsDelete },
+  links: { getBySeries: linksGetBySeries, add: linksAdd, update: linksUpdate, delete: linksDelete },
   account: { delete: accountDelete },
 };

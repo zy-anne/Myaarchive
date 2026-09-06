@@ -386,6 +386,7 @@
           <div id="pane-files" class="tab-pane hidden">
             <div class="pane-toolbar">
               <span class="form-hint" style="margin-right:auto;">Max 100MB per file</span>
+              <button class="btn btn-secondary btn-sm" id="btn-add-link">+ Add Link</button>
               <button class="btn btn-primary btn-sm" id="btn-add-file">+ Add File</button>
             </div>
             <div id="files-list" class="files-list"></div>
@@ -1097,6 +1098,31 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" data-close="overlay-gallery-detail">Cancel</button>
         <button class="btn btn-primary" id="btn-save-gallery-caption">Save Caption</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Link Attachment Form -->
+  <div class="overlay hidden" id="overlay-link">
+    <div class="modal modal-sm" id="modal-link">
+      <div class="modal-header">
+        <h2 id="modal-link-title">Add Link</h2>
+        <button class="close-btn" data-close="overlay-link">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="f-link-url">URL <span class="req">*</span></label>
+          <input id="f-link-url" type="text" placeholder="https://…" maxlength="2000" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label for="f-link-label">Label <span class="optional">(optional)</span></label>
+          <input id="f-link-label" type="text" placeholder="e.g. Official Publisher Page" maxlength="200"
+            autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-link">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-link">Save Link</button>
       </div>
     </div>
   </div>
