@@ -61,6 +61,8 @@ let state = {
   statsGoal: null,         // annual reading goal — persisted via settings ('annualReadingGoal'); null = not set yet
   statsSelectedYear: null, // Reading Timeline Distribution controls
   statsSelectedMonth: 'all', // 'all' | 1-12
+  volNotesEntries: [],     // working list of Chapter Notes timeline entries while the volume modal is open
+  standaloneNotesEntries: [], // working list of Chapter Notes timeline entries while the standalone thoughts modal is open
 };
 
 // ─── Elements ─────────────────────────────────────────────────────────────────
@@ -148,6 +150,96 @@ const escapeHTML = (str) => String(str || '').replace(/[&<>'"]/g,
 
 const nl2br = (str) => escapeHTML(str).replace(/\n/g, '<br>');
 
+function parseTimelineEntries(text) {
+  return (text || '')
+    .split(/\n\s*\n/)
+    .map(e => e.trim())
+    .filter(Boolean);
+}
+
+function renderChapterNotesTimeline(text) {
+  const entries = parseTimelineEntries(text);
+  if (entries.length === 0) return '';
+
+  return `
+    <div class="timeline-notes">
+      ${entries.map(entry => `
+        <div class="timeline-item">
+          <div class="timeline-marker">
+            <span class="timeline-dot"></span>
+            <span class="timeline-line"></span>
+          </div>
+          <div class="timeline-card">${nl2br(entry)}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+// ─── Chapter Notes Timeline — Input Side (shared: Volumes + Standalone) ──
+// Both the volume form's Chapter Notes and the standalone form's Chapter
+// Notes build the same way — one note at a time, each becoming its own
+// timeline node. `stateKey` points at which working array to use
+// (volNotesEntries or standaloneNotesEntries), `listId`/`hiddenId`/
+// `counterId` are that form's own element ids.
+const MAX_CHAPTER_NOTES_LENGTH = 20000;
+
+function renderTimelineNotesInput(stateKey, listId, hiddenId, counterId) {
+  const entries = state[stateKey];
+  const list = el(listId);
+  if (entries.length === 0) {
+    list.innerHTML = `<div class="timeline-input-empty">No notes added yet — write one below and click "+ Add to Timeline".</div>`;
+  } else {
+    list.innerHTML = entries.map((entry, i) => `
+      <div class="timeline-input-item">
+        <div class="timeline-marker">
+          <span class="timeline-dot"></span>
+          <span class="timeline-line"></span>
+        </div>
+        <div class="timeline-input-card">
+          <span>${nl2br(entry)}</span>
+          <button type="button" class="timeline-input-remove" data-index="${i}" title="Remove">✕</button>
+        </div>
+      </div>
+    `).join('');
+    list.querySelectorAll('.timeline-input-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state[stateKey].splice(parseInt(btn.dataset.index), 1);
+        renderTimelineNotesInput(stateKey, listId, hiddenId, counterId);
+      });
+    });
+  }
+
+  const combined = entries.join('\n\n');
+  el(hiddenId).value = combined;
+  const counter = el(counterId);
+  if (counter) {
+    counter.textContent = `${combined.length} / ${MAX_CHAPTER_NOTES_LENGTH}`;
+    counter.classList.toggle('char-counter-warn', combined.length >= MAX_CHAPTER_NOTES_LENGTH * 0.9 && combined.length < MAX_CHAPTER_NOTES_LENGTH);
+    counter.classList.toggle('char-counter-max', combined.length >= MAX_CHAPTER_NOTES_LENGTH);
+  }
+}
+
+function addTimelineNoteEntry(stateKey, inputId, listId, hiddenId, counterId) {
+  const input = el(inputId);
+  const text = input.value.trim();
+  if (!text) return;
+  state[stateKey].push(text);
+  input.value = '';
+  renderTimelineNotesInput(stateKey, listId, hiddenId, counterId);
+  input.focus();
+}
+
+function addTimelineNoteEntry() {
+  const input = el('f-v-notes-new');
+  const text = input.value.trim();
+  if (!text) return;
+  state.volNotesEntries.push(text);
+  input.value = '';
+  renderTimelineNotesInput();
+  input.focus();
+}
+
 // Images are stored as R2 object keys now, not local paths, so an <img> can't
 // point straight at the stored value the way it used to. Render markup with
 // data-key="<the key>" and no src, then call this right after — it fetches
@@ -201,11 +293,9 @@ function initCharCounters() {
   wireCharCounter('f-s-author', 200);
   wireCharCounter('f-s-synopsis', 5000);
   wireCharCounter('f-standalone-thoughts', 20000);
-  wireCharCounter('f-standalone-chapter-notes', 20000);
   wireCharCounter('f-v-title', 300);
   wireCharCounter('f-v-chapters', 200);
   wireCharCounter('f-v-thoughts', 20000);
-  wireCharCounter('f-v-notes', 20000);
   wireCharCounter('f-c-name', 200);
   wireCharCounter('f-c-vols', 300);
   wireCharCounter('f-c-appears', 2000);
@@ -1165,6 +1255,10 @@ function bindEvents() {
   // Volume Actions
   el('btn-add-volume').addEventListener('click', () => openVolumeModal());
   el('btn-save-volume').addEventListener('click', saveVolume);
+  el('btn-add-timeline-note').addEventListener('click', () =>
+    addTimelineNoteEntry('volNotesEntries', 'f-v-notes-new', 'timeline-notes-list', 'f-v-notes', 'f-v-notes-counter'));
+  el('btn-add-standalone-timeline-note').addEventListener('click', () =>
+    addTimelineNoteEntry('standaloneNotesEntries', 'f-standalone-chapter-notes-new', 'standalone-timeline-notes-list', 'f-standalone-chapter-notes', 'f-standalone-chapter-notes-counter'));
   el('btn-edit-vol').addEventListener('click', () => {
     closeModal('overlay-vol-detail');
     openVolumeModal(state.currentVolume);
@@ -2900,16 +2994,17 @@ function renderStandaloneThoughtsView(s) {
   }
   view.innerHTML = `
     ${s.overall_thoughts ? `<div class="vol-detail-section"><h4>Overall Thoughts</h4><div class="vol-detail-text">${nl2br(s.overall_thoughts)}</div></div>` : ''}
-    ${s.chapter_thoughts ? `<div class="vol-detail-section"><h4>Chapter Notes</h4><div class="vol-detail-text">${nl2br(s.chapter_thoughts)}</div></div>` : ''}
-  `;
+    ${s.chapter_thoughts ? `<div class="vol-detail-section"><h4>Chapter Notes</h4> ${renderChapterNotesTimeline(s.chapter_thoughts)}</div>` : ''}`
   fillCoverImages(view);
 }
 
 function openStandaloneThoughtsModal() {
   el('f-standalone-thoughts').value = state.currentSeries.overall_thoughts || '';
-  el('f-standalone-chapter-notes').value = state.currentSeries.chapter_thoughts || '';
+  state.standaloneNotesEntries = parseTimelineEntries(state.currentSeries.chapter_thoughts || '');
+  el('f-standalone-chapter-notes-new').value = '';
+  renderTimelineNotesInput('standaloneNotesEntries', 'standalone-timeline-notes-list', 'f-standalone-chapter-notes', 'f-standalone-chapter-notes-counter');
   openModal('overlay-standalone-thoughts');
-  refreshCharCounters('f-standalone-thoughts', 'f-standalone-chapter-notes');
+  refreshCharCounters('f-standalone-thoughts');
   el('f-standalone-thoughts').focus();
 }
 
@@ -2957,10 +3052,11 @@ async function quickUpdateSeriesField(field, value) {
 }
 
 // Today's date as YYYY-MM-DD, matching what <input type="date"> stores.
+
 function todayISODate() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return ` ${d.getFullYear()} -${pad(d.getMonth() + 1)} -${pad(d.getDate())} `;
 }
 
 async function saveStandaloneThoughts() {
@@ -2973,7 +3069,7 @@ async function saveStandaloneThoughts() {
     tags: s.tags.map(t => t.name),
     kind: s.kind,
     overall_thoughts: el('f-standalone-thoughts').value.trim(),
-    chapter_thoughts: el('f-standalone-chapter-notes').value.trim(),
+    chapter_thoughts: state.standaloneNotesEntries.join('\n\n').trim(),
     cover_image_path: s.cover_image_path,
     // Carry the additional-details fields through unchanged — this form
     // doesn't edit them, but seriesUpdate rebuilds every column, so leaving
@@ -3033,8 +3129,8 @@ function renderStatusFilterButtons() {
   const container = el('status-filter-buttons');
   const entries = [{ name: 'All' }, ...state.allStatuses];
   container.innerHTML = entries.map(s => `
-    <button class="filter-btn ${state.filterStatus === s.name ? 'active' : ''}" data-status="${escapeHTML(s.name)}">${escapeHTML(s.name)}</button>
-  `).join('');
+    < button class="filter-btn ${state.filterStatus === s.name ? 'active' : ''}" data - status="${escapeHTML(s.name)}" > ${escapeHTML(s.name)}</button >
+      `).join('');
   container.querySelectorAll('.filter-btn[data-status]').forEach(btn => {
     btn.addEventListener('click', () => {
       container.querySelectorAll('.filter-btn[data-status]').forEach(b => b.classList.remove('active'));
@@ -3056,7 +3152,7 @@ function renderStatusSelectOptions(selected) {
   if (selected && !names.some(n => n.toLowerCase() === selected.toLowerCase())) {
     names = [selected, ...names];
   }
-  sel.innerHTML = names.map(n => `<option value="${escapeHTML(n)}">${escapeHTML(n)}</option>`).join('');
+  sel.innerHTML = names.map(n => `< option value = "${escapeHTML(n)}" > ${escapeHTML(n)}</option > `).join('');
   sel.value = selected || names[0] || '';
 }
 
@@ -3082,16 +3178,16 @@ function openManageStatusesModal() {
 function renderStatusManageList() {
   const container = el('status-manage-list');
   if (state.allStatuses.length === 0) {
-    container.innerHTML = `<div class="filter-option-empty">No statuses yet — add one below.</div>`;
+    container.innerHTML = `< div class="filter-option-empty" > No statuses yet — add one below.</div > `;
     return;
   }
   container.innerHTML = state.allStatuses.map(s => `
-    <div class="status-manage-row" data-id="${s.id}">
+    < div class="status-manage-row" data - id="${s.id}" >
       <input type="color" class="status-color-input" value="${s.color}" data-id="${s.id}" title="Color">
-      <input type="text" class="status-name-input" value="${escapeHTML(s.name)}" data-id="${s.id}" maxlength="50" autocomplete="off">
-      <button type="button" class="btn btn-danger-ghost btn-sm status-delete-btn" data-id="${s.id}" title="Delete status">✕</button>
-    </div>
-  `).join('');
+        <input type="text" class="status-name-input" value="${escapeHTML(s.name)}" data-id="${s.id}" maxlength="50" autocomplete="off">
+          <button type="button" class="btn btn-danger-ghost btn-sm status-delete-btn" data-id="${s.id}" title="Delete status">✕</button>
+        </div>
+        `).join('');
 
   container.querySelectorAll('.status-color-input').forEach(input => {
     input.addEventListener('change', () => saveStatusEdit(parseInt(input.dataset.id)));
@@ -3185,12 +3281,12 @@ function renderGenreFilterPanel() {
     return;
   }
   panel.innerHTML = state.allGenres.map(g => `
-    <label class="filter-option">
-      <input type="checkbox" data-name="${escapeHTML(g.name)}" ${state.filterGenres.includes(g.name) ? 'checked' : ''}>
-      <span class="filter-option-swatch" style="background:${g.color}"></span>
-      ${escapeHTML(g.name)}
-    </label>
-  `).join('');
+        <label class="filter-option">
+          <input type="checkbox" data-name="${escapeHTML(g.name)}" ${state.filterGenres.includes(g.name) ? 'checked' : ''}>
+            <span class="filter-option-swatch" style="background:${g.color}"></span>
+            ${escapeHTML(g.name)}
+        </label>
+        `).join('');
   panel.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.addEventListener('change', () => {
       const name = cb.dataset.name;
@@ -3210,12 +3306,12 @@ function renderTagFilterPanel() {
     return;
   }
   panel.innerHTML = state.allTags.map(t => `
-    <label class="filter-option">
-      <input type="checkbox" data-name="${escapeHTML(t.name)}" ${state.filterTags.includes(t.name) ? 'checked' : ''}>
-      <span class="filter-option-swatch" style="background:${t.color || '#4a90e2'}"></span>
-      ${escapeHTML(t.name)}
-    </label>
-  `).join('');
+        <label class="filter-option">
+          <input type="checkbox" data-name="${escapeHTML(t.name)}" ${state.filterTags.includes(t.name) ? 'checked' : ''}>
+            <span class="filter-option-swatch" style="background:${t.color || '#4a90e2'}"></span>
+            ${escapeHTML(t.name)}
+        </label>
+        `).join('');
   panel.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.addEventListener('change', () => {
       const name = cb.dataset.name;
@@ -3266,12 +3362,12 @@ function renderGenreSwatches() {
   grid.innerHTML = state.allGenres.map(g => {
     const active = state.selectedGenres.includes(g.name);
     return `
-      <button type="button" class="genre-swatch ${active ? 'active' : ''}" data-name="${escapeHTML(g.name)}"
-        style="${active ? `background:${g.color}; border-color:${g.color};` : ''}">
-        <span class="genre-swatch-dot" style="background:${g.color}"></span>
-        ${escapeHTML(g.name)}
-      </button>
-    `;
+        <button type="button" class="genre-swatch ${active ? 'active' : ''}" data-name="${escapeHTML(g.name)}"
+          style="${active ? `background:${g.color}; border-color:${g.color};` : ''}">
+          <span class="genre-swatch-dot" style="background:${g.color}"></span>
+          ${escapeHTML(g.name)}
+        </button>
+        `;
   }).join('');
   grid.querySelectorAll('.genre-swatch').forEach(btn => {
     btn.addEventListener('click', () => toggleGenre(btn.dataset.name));
@@ -3445,7 +3541,7 @@ function addWarning(name) {
 // Deliberately scoped to THIS user only, across all of their own
 // categories/libraries — never shared globally the way genres are (see the
 // README's note that genres are "the one exception" that's shared/global).
-// window.api.series.getAll({}) with no libraryId returns every series this
+// window.api.series.getAll({ }) with no libraryId returns every series this
 // account owns; main.js's requireUser() already enforces that server-side,
 // so this can never pick up another account's book types.
 const BOOK_TYPE_SEED_OPTIONS = ['Novel', 'Light Novel', 'Web Novel', 'Graphic Novel', 'Manga', 'Manhwa', 'Manhua', 'Comic'];
@@ -3759,13 +3855,13 @@ function renderVolumes() {
     if (v.chapter_count) metaBits.push(`${v.chapter_count} chs`);
 
     return `
-      <div class="volume-card" data-id="${v.id}" style="background:${color}">
-        <div class="vol-note-label">Vol. ${v.volume_number}${v.date_read ? ` · ${formatDate(v.date_read)}` : ''}</div>
-        ${v.cover_image_path ? `<div class="vol-note-cover"><img data-key="${escapeHTML(v.cover_image_path)}" alt="Cover"></div>` : ''}
-        <div class="vol-note-body">${bodyText}</div>
-        ${metaBits.length ? `<div class="vol-note-meta">${metaBits.join(' · ')}</div>` : ''}
-      </div>
-    `;
+            <div class="volume-card" data-id="${v.id}" style="background:${color}">
+              <div class="vol-note-label">Vol. ${v.volume_number}${v.date_read ? ` · ${formatDate(v.date_read)}` : ''}</div>
+              ${v.cover_image_path ? `<div class="vol-note-cover"><img data-key="${escapeHTML(v.cover_image_path)}" alt="Cover"></div>` : ''}
+              <div class="vol-note-body">${bodyText}</div>
+              ${metaBits.length ? `<div class="vol-note-meta">${metaBits.join(' · ')}</div>` : ''}
+            </div>
+            `;
   }).join('');
 
   fillCoverImages(dom.volList);
@@ -3853,7 +3949,10 @@ function openVolumeModal(vol = null) {
   el('f-v-date').value = vol?.date_read || '';
   el('f-v-published').value = vol?.published_date || '';
   el('f-v-thoughts').value = vol?.thoughts || '';
-  el('f-v-notes').value = vol?.chapter_notes || '';
+  state.volNotesEntries = parseTimelineEntries(vol?.chapter_notes || '');
+
+  el('f-v-notes-new').value = '';
+  renderTimelineNotesInput('volNotesEntries', 'timeline-notes-list', 'f-v-notes', 'f-v-notes-counter');
   el('f-v-cover').value = vol?.cover_image_path || '';
 
   if (vol?.cover_data_url) {
@@ -3871,7 +3970,7 @@ function openVolumeModal(vol = null) {
   }
 
   openModal('overlay-volume');
-  refreshCharCounters('f-v-title', 'f-v-chapters', 'f-v-thoughts', 'f-v-notes');
+  refreshCharCounters('f-v-title', 'f-v-chapters', 'f-v-thoughts');
   el('f-v-number').focus();
 }
 
@@ -3885,7 +3984,7 @@ async function saveVolume() {
     date_read: el('f-v-date').value || null,
     published_date: el('f-v-published').value || null,
     thoughts: el('f-v-thoughts').value.trim(),
-    chapter_notes: el('f-v-notes').value.trim(),
+    chapter_notes: state.volNotesEntries.join('\n\n').trim(),
     cover_image_path: el('f-v-cover').value || null,
   };
 
@@ -3917,19 +4016,19 @@ function openVolDetail(v) {
   }
 
   html += `<div class="vol-detail-right">
-    <div class="vol-detail-meta">
-      ${v.chapter_range ? `<span>🔖 ${escapeHTML(v.chapter_range)}</span>` : ''}
-      ${v.chapter_count ? `<span>📑 ${v.chapter_count} Chapters</span>` : ''}
-      ${v.date_read ? `<span>📅 Read: ${formatDate(v.date_read)}</span>` : ''}
-      ${v.published_date ? `<span>🗓️ Published: ${formatDate(v.published_date)}</span>` : ''}
-    </div>
-  `;
+                <div class="vol-detail-meta">
+                  ${v.chapter_range ? `<span>🔖 ${escapeHTML(v.chapter_range)}</span>` : ''}
+                  ${v.chapter_count ? `<span>📑 ${v.chapter_count} Chapters</span>` : ''}
+                  ${v.date_read ? `<span>📅 Read: ${formatDate(v.date_read)}</span>` : ''}
+                  ${v.published_date ? `<span>🗓️ Published: ${formatDate(v.published_date)}</span>` : ''}
+                </div>
+                `;
 
   if (v.thoughts) {
     html += `<div class="vol-detail-section"><h4>Thoughts</h4><div class="vol-detail-text">${nl2br(v.thoughts)}</div></div>`;
   }
   if (v.chapter_notes) {
-    html += `<div class="vol-detail-section"><h4>Chapter Notes</h4><div class="vol-detail-text">${nl2br(v.chapter_notes)}</div></div>`;
+    html += `<div class="vol-detail-section"><h4>Chapter Notes</h4>${renderChapterNotesTimeline(v.chapter_notes)}</div>`;
   }
 
   html += `</div></div>`;
@@ -3948,14 +4047,14 @@ function renderCharacters() {
   }
 
   dom.charGrid.innerHTML = state.characters.map(c => `
-    <div class="character-card" data-id="${c.id}">
-      <div class="char-avatar">
-        ${c.profile_image_path ? `<img data-key="${escapeHTML(c.profile_image_path)}" alt="${escapeHTML(c.name)}">` : `<span class="char-avatar-fallback">${c.name.charAt(0).toUpperCase()}</span>`}
-      </div>
-      <div class="char-name">${escapeHTML(c.name)}</div>
-      <div class="char-role ${c.role.toLowerCase()}">${escapeHTML(c.role)}</div>
-    </div>
-  `).join('');
+            <div class="character-card" data-id="${c.id}">
+              <div class="char-avatar">
+                ${c.profile_image_path ? `<img data-key="${escapeHTML(c.profile_image_path)}" alt="${escapeHTML(c.name)}">` : `<span class="char-avatar-fallback">${c.name.charAt(0).toUpperCase()}</span>`}
+              </div>
+              <div class="char-name">${escapeHTML(c.name)}</div>
+              <div class="char-role ${c.role.toLowerCase()}">${escapeHTML(c.role)}</div>
+            </div>
+            `).join('');
 
   fillCoverImages(dom.charGrid);
 
@@ -3986,17 +4085,17 @@ function renderCharactersList() {
   const noAppearancesText = isStandalone ? 'No chapter appearances noted' : 'No volume appearances noted';
 
   list.innerHTML = state.characters.map(c => `
-    <div class="character-list-row" data-id="${c.id}">
-      <div class="character-list-avatar">
-        ${c.profile_image_path ? `<img data-key="${escapeHTML(c.profile_image_path)}" alt="${escapeHTML(c.name)}">` : `<span class="char-avatar-fallback">${c.name.charAt(0).toUpperCase()}</span>`}
-      </div>
-      <div class="character-list-info">
-        <div class="character-list-name">${escapeHTML(c.name)}</div>
-        <div class="character-list-meta">${c.volume_appearances ? escapeHTML(c.volume_appearances) : noAppearancesText}</div>
-      </div>
-      <span class="char-role ${c.role.toLowerCase()}">${escapeHTML(c.role)}</span>
-    </div>
-  `).join('');
+            <div class="character-list-row" data-id="${c.id}">
+              <div class="character-list-avatar">
+                ${c.profile_image_path ? `<img data-key="${escapeHTML(c.profile_image_path)}" alt="${escapeHTML(c.name)}">` : `<span class="char-avatar-fallback">${c.name.charAt(0).toUpperCase()}</span>`}
+              </div>
+              <div class="character-list-info">
+                <div class="character-list-name">${escapeHTML(c.name)}</div>
+                <div class="character-list-meta">${c.volume_appearances ? escapeHTML(c.volume_appearances) : noAppearancesText}</div>
+              </div>
+              <span class="char-role ${c.role.toLowerCase()}">${escapeHTML(c.role)}</span>
+            </div>
+            `).join('');
 
   fillCoverImages(list);
 
@@ -4161,39 +4260,39 @@ async function openCharDrawer(c) {
   const appearancesLabel = state.currentSeries?.kind === 'standalone' ? 'APPEARS IN (CHAPTERS)' : 'APPEARS IN';
 
   dom.drawerBody.innerHTML = `
-    <div class="lore-header">
-      <div class="lore-eyebrow">DEEP DIVE</div>
-      <h2 class="lore-title">Character Lore</h2>
-      <div class="lore-divider"></div>
-    </div>
+            <div class="lore-header">
+              <div class="lore-eyebrow">DEEP DIVE</div>
+              <h2 class="lore-title">Character Lore</h2>
+              <div class="lore-divider"></div>
+            </div>
 
-    <div class="lore-hero">
-      <div class="lore-portrait-card">
-        <div class="lore-portrait-badge">${escapeHTML(c.name)}</div>
-        <div class="lore-portrait-img-wrap" style="${coverSrc ? `background-image: url('${coverSrc}')` : ''}">
-          ${!coverSrc ? `<span class="char-avatar-fallback">${c.name.charAt(0).toUpperCase()}</span>` : ''}
-        </div>
-      </div>
+            <div class="lore-hero">
+              <div class="lore-portrait-card">
+                <div class="lore-portrait-badge">${escapeHTML(c.name)}</div>
+                <div class="lore-portrait-img-wrap" style="${coverSrc ? `background-image: url('${coverSrc}')` : ''}">
+                  ${!coverSrc ? `<span class="char-avatar-fallback">${c.name.charAt(0).toUpperCase()}</span>` : ''}
+                </div>
+              </div>
 
-      <div class="lore-hero-meta">
-        ${statusRoleHtml ? `
+              <div class="lore-hero-meta">
+                ${statusRoleHtml ? `
           <div class="lore-block">
             <div class="lore-label">STATUS &amp; ROLE</div>
             <div class="lore-status-text">${statusRoleHtml}</div>
           </div>
         ` : ''}
 
-        ${c.overall_vibes ? `
+                ${c.overall_vibes ? `
           <div class="lore-sep"></div>
           <div class="lore-block">
             <div class="lore-label">OVERALL VIBES</div>
             <div class="lore-vibes-quote">“${escapeHTML(c.overall_vibes.replace(/^["“”]|["“”]$/g, ''))}”</div>
           </div>
         ` : ''}
-      </div>
-    </div>
+              </div>
+            </div>
 
-    ${(c.appears_text || c.reality_text || c.appears_vs_reality) ? `
+            ${(c.appears_text || c.reality_text || c.appears_vs_reality) ? `
       <div class="lore-section lore-contrast-section">
         <div class="lore-label">APPEARS VS. REALITY</div>
         <div class="lore-contrast-card">
@@ -4204,7 +4303,7 @@ async function openCharDrawer(c) {
       </div>
     ` : ''}
 
-    ${c.personality ? `
+            ${c.personality ? `
       <div class="lore-section">
         <div class="lore-label">PERSONALITY</div>
         <div class="lore-personality-card">
@@ -4213,20 +4312,20 @@ async function openCharDrawer(c) {
       </div>
     ` : ''}
 
-    ${c.volume_appearances ? `
+            ${c.volume_appearances ? `
       <div class="lore-section">
         <div class="lore-label">${escapeHTML(appearancesLabel)}</div>
         <div class="lore-simple-meta">${escapeHTML(c.volume_appearances)}</div>
       </div>
     ` : ''}
 
-    ${c.notes ? `
+            ${c.notes ? `
       <div class="lore-section">
         <div class="lore-label">ADDITIONAL NOTES</div>
         <div class="lore-notes-body">${nl2br(c.notes)}</div>
       </div>
     ` : ''}
-  `;
+            `;
 
   renderDrawerRels();
   el('drawer-overlay').classList.remove('hidden');
@@ -4241,11 +4340,11 @@ function renderGallery() {
   }
 
   dom.galleryGrid.innerHTML = state.galleryImages.map(g => `
-    <div class="gallery-card" data-id="${g.id}" draggable="true">
-      <img class="gallery-card-img" data-key="${escapeHTML(g.image_path)}" alt="${escapeHTML(g.caption || '')}">
-      ${g.caption ? `<div class="gallery-card-caption">${escapeHTML(g.caption)}</div>` : ''}
-    </div>
-  `).join('');
+            <div class="gallery-card" data-id="${g.id}" draggable="true">
+              <img class="gallery-card-img" data-key="${escapeHTML(g.image_path)}" alt="${escapeHTML(g.caption || '')}">
+                ${g.caption ? `<div class="gallery-card-caption">${escapeHTML(g.caption)}</div>` : ''}
+            </div>
+            `).join('');
   fillCoverImages(dom.galleryGrid);
 
   dom.galleryGrid.querySelectorAll('.gallery-card').forEach(card => {
@@ -4356,16 +4455,16 @@ const FILE_EXT_CATEGORY = {
 };
 
 const FILE_ICON_PATHS = {
-  image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
-  audio: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
-  video: '<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>',
-  archive: '<path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><line x1="10" y1="12" x2="14" y2="12"/>',
-  sheet: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/>',
-  presentation: '<rect x="2" y="4" width="20" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
-  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
-  pdf: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
-  doc: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>',
-  generic: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />',
+  audio: '<path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />',
+  video: '<polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" />',
+  archive: '<path d="M21 8v13H3V8" /><path d="M1 3h22v5H1z" /><line x1="10" y1="12" x2="14" y2="12" />',
+  sheet: '<rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="3" y1="15" x2="21" y2="15" /><line x1="9" y1="3" x2="9" y2="21" />',
+  presentation: '<rect x="2" y="4" width="20" height="13" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />',
+  code: '<polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />',
+  pdf: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />',
+  doc: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" />',
+  generic: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />',
 };
 
 function fileCategory(fileName) {
@@ -4404,22 +4503,22 @@ function renderFiles() {
     const category = fileCategory(f.file_name);
     const ext = (f.file_name.split('.').pop() || '?').toUpperCase();
     return `
-      <div class="file-row" data-id="${f.id}" data-kind="file">
-        <div class="file-icon file-icon-${category}" data-category="${category}" data-path="${escapeHTML(f.file_path)}">
-          ${category === 'generic'
+            <div class="file-row" data-id="${f.id}" data-kind="file">
+              <div class="file-icon file-icon-${category}" data-category="${category}" data-path="${escapeHTML(f.file_path)}">
+                ${category === 'generic'
         ? `${fileIconSvg('generic')}<span class="file-icon-ext">${escapeHTML(ext.slice(0, 4))}</span>`
         : fileIconSvg(category)}
-        </div>
-        <div class="file-info">
-          <div class="file-name">${escapeHTML(f.file_name)}</div>
-          <div class="file-meta">${formatFileSize(f.file_size)} · Added ${formatDate(f.created_at)}</div>
-        </div>
-        <div class="file-actions">
-          <button class="btn btn-ghost btn-sm file-open-btn" data-id="${f.id}">Open</button>
-          <button class="btn btn-danger-ghost btn-sm file-delete-btn" data-id="${f.id}">Delete</button>
-        </div>
-      </div>
-    `;
+              </div>
+              <div class="file-info">
+                <div class="file-name">${escapeHTML(f.file_name)}</div>
+                <div class="file-meta">${formatFileSize(f.file_size)} · Added ${formatDate(f.created_at)}</div>
+              </div>
+              <div class="file-actions">
+                <button class="btn btn-ghost btn-sm file-open-btn" data-id="${f.id}">Open</button>
+                <button class="btn btn-danger-ghost btn-sm file-delete-btn" data-id="${f.id}">Delete</button>
+              </div>
+            </div>
+            `;
   });
 
   // Links reuse the same .file-row shape for visual consistency, with a
@@ -4433,24 +4532,24 @@ function renderFiles() {
       catch { displayLabel = l.url; }
     }
     return `
-      <div class="file-row" data-id="${l.id}" data-kind="link">
-        <div class="file-icon file-icon-link">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-          </svg>
-        </div>
-        <div class="file-info">
-          <div class="file-name">${escapeHTML(displayLabel)}</div>
-          <div class="file-meta">${escapeHTML(l.url)}</div>
-        </div>
-        <div class="file-actions">
-          <button class="btn btn-ghost btn-sm link-open-btn" data-id="${l.id}">Open</button>
-          <button class="btn btn-ghost btn-sm link-edit-btn" data-id="${l.id}">Edit</button>
-          <button class="btn btn-danger-ghost btn-sm link-delete-btn" data-id="${l.id}">Delete</button>
-        </div>
-      </div>
-    `;
+            <div class="file-row" data-id="${l.id}" data-kind="link">
+              <div class="file-icon file-icon-link">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+              </div>
+              <div class="file-info">
+                <div class="file-name">${escapeHTML(displayLabel)}</div>
+                <div class="file-meta">${escapeHTML(l.url)}</div>
+              </div>
+              <div class="file-actions">
+                <button class="btn btn-ghost btn-sm link-open-btn" data-id="${l.id}">Open</button>
+                <button class="btn btn-ghost btn-sm link-edit-btn" data-id="${l.id}">Edit</button>
+                <button class="btn btn-danger-ghost btn-sm link-delete-btn" data-id="${l.id}">Delete</button>
+              </div>
+            </div>
+            `;
   });
 
   dom.filesList.innerHTML = [...linkRows, ...fileRows].join('');
@@ -4568,18 +4667,18 @@ function renderDrawerRels() {
     const arrow = r.is_bidirectional ? '↔' : (isFromMe ? '→' : '←');
 
     return `
-      <div class="rel-list-item" data-id="${r.id}">
-        <div class="rel-list-header">
-          <span><span style="color:var(--text-muted)">${arrow}</span> <span class="rel-target">${escapeHTML(targetName)}</span></span>
-          <span class="rel-list-actions">
-            <span class="rel-type ${relCategory(r).toLowerCase()}">${escapeHTML(relLabel(r))}</span>
-            <button class="rel-edit-btn" data-id="${r.id}" title="Edit relationship">✎</button>
-            <button class="rel-delete-btn" data-id="${r.id}" title="Delete relationship">✕</button>
-          </span>
-        </div>
-        ${r.notes ? `<div class="rel-notes">${escapeHTML(r.notes)}</div>` : ''}
-      </div>
-    `;
+            <div class="rel-list-item" data-id="${r.id}">
+              <div class="rel-list-header">
+                <span><span style="color:var(--text-muted)">${arrow}</span> <span class="rel-target">${escapeHTML(targetName)}</span></span>
+                <span class="rel-list-actions">
+                  <span class="rel-type ${relCategory(r).toLowerCase()}">${escapeHTML(relLabel(r))}</span>
+                  <button class="rel-edit-btn" data-id="${r.id}" title="Edit relationship">✎</button>
+                  <button class="rel-delete-btn" data-id="${r.id}" title="Delete relationship">✕</button>
+                </span>
+              </div>
+              ${r.notes ? `<div class="rel-notes">${escapeHTML(r.notes)}</div>` : ''}
+            </div>
+            `;
   }).join('');
 
   dom.drawerRels.querySelectorAll('.rel-edit-btn').forEach(btn => {
@@ -4756,8 +4855,8 @@ async function showGraph() {
 
   // Legend
   el('graph-legend').innerHTML = Object.entries(typeColors).map(([k, v]) => `
-    <div class="legend-item"><div class="legend-color" style="background:${v.background}"></div>${k}</div>
-  `).join('');
+            <div class="legend-item"><div class="legend-color" style="background:${v.background}"></div>${k}</div>
+            `).join('');
 
   // Data — characters with a saved photo render as a circular portrait;
   // everyone else falls back to the plain colored dot.

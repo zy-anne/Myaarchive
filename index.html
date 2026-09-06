@@ -795,9 +795,18 @@
           <span class="char-counter" id="f-standalone-thoughts-counter">0 / 20000</span>
         </div>
         <div class="form-group">
-          <label for="f-standalone-chapter-notes">Chapter Notes</label>
-          <textarea id="f-standalone-chapter-notes" rows="6" maxlength="20000"
-            placeholder="Per-chapter notes…"></textarea>
+          <label>Chapter Notes</label>
+          <div class="timeline-input-list" id="standalone-timeline-notes-list"></div>
+          <div class="timeline-input-add">
+            <div class="timeline-marker timeline-marker-add">
+              <span class="timeline-dot-add"></span>
+            </div>
+            <textarea id="f-standalone-chapter-notes-new" rows="2" maxlength="2000"
+              placeholder="Write a note, then add it to the timeline…"></textarea>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm timeline-add-btn" id="btn-add-standalone-timeline-note">+
+            Add to Timeline</button>
+          <input type="hidden" id="f-standalone-chapter-notes">
           <span class="char-counter" id="f-standalone-chapter-notes-counter">0 / 20000</span>
         </div>
       </div>
@@ -859,8 +868,18 @@
           <span class="char-counter" id="f-v-thoughts-counter">0 / 20000</span>
         </div>
         <div class="form-group">
-          <label for="f-v-notes">Chapter Notes</label>
-          <textarea id="f-v-notes" rows="5" maxlength="20000" placeholder="Per-chapter notes…"></textarea>
+          <label>Chapter Notes</label>
+          <div class="timeline-input-list" id="timeline-notes-list"></div>
+          <div class="timeline-input-add">
+            <div class="timeline-marker timeline-marker-add">
+              <span class="timeline-dot-add"></span>
+            </div>
+            <textarea id="f-v-notes-new" rows="2" maxlength="2000"
+              placeholder="Write a note, then add it to the timeline…"></textarea>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm timeline-add-btn" id="btn-add-timeline-note">+ Add to
+            Timeline</button>
+          <input type="hidden" id="f-v-notes">
           <span class="char-counter" id="f-v-notes-counter">0 / 20000</span>
         </div>
       </div>

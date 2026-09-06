@@ -3007,6 +3007,174 @@ select option:focus {
   font-family: var(--font-ui);
 }
 
+/* ── Chapter Notes Timeline ───────────────────────────────────────────────
+   Renders chapter_notes/chapter_thoughts as a vertical timeline instead of
+   one unbroken block — each blank-line-separated chunk becomes its own
+   connected, accent-bordered card: a soft line down the left, a dot per
+   entry, italic serif body text in a muted card. */
+.timeline-notes {
+  display: flex;
+  flex-direction: column;
+}
+
+.timeline-item {
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.timeline-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 14px;
+}
+
+.timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+.timeline-line {
+  flex: 1;
+  width: 2px;
+  background: var(--border);
+  margin-top: 4px;
+}
+
+/* Last entry has no card after it — hide its dangling connector. */
+.timeline-item:last-child .timeline-line {
+  display: none;
+}
+
+.timeline-card {
+  flex: 1;
+  min-width: 0;
+  background: color-mix(in srgb, var(--surface) 88%, var(--accent) 12%);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin-bottom: var(--sp-4);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--text-main);
+}
+
+/* ── Chapter Notes Timeline — Input Side ──────────────────────────────── */
+.timeline-input-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.timeline-input-item {
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.timeline-input-item .timeline-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 14px;
+}
+
+.timeline-input-item .timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+.timeline-input-item .timeline-line {
+  flex: 1;
+  width: 2px;
+  background: var(--border);
+  margin-top: 4px;
+}
+
+.timeline-input-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  background: color-mix(in srgb, var(--surface) 88%, var(--accent) 12%);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: var(--sp-3);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-main);
+}
+
+.timeline-input-remove {
+  background: transparent;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.timeline-input-remove:hover {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+}
+
+/* The "add new node" row — a dashed, hollow dot signals "not committed
+   yet" (unlike the solid filled dots on already-added entries above it). */
+.timeline-input-add {
+  display: flex;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+
+.timeline-marker-add .timeline-dot-add {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px dashed var(--accent);
+  background: transparent;
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+.timeline-input-add textarea {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeline-add-btn {
+  margin: 0 0 var(--sp-2) 26px;
+  /* lines up under the textarea, past the dot column */
+  align-self: flex-start;
+}
+
+.timeline-input-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  padding: 4px 0 var(--sp-2) 2px;
+}
+
 .standalone-cover-wrap {
   margin-bottom: var(--sp-6);
 }
