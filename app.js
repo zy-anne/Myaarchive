@@ -53,6 +53,8 @@ let state = {
   sortField: 'title',      // 'title' | 'author' | 'rating' | 'year_published' | 'date_started' | 'date_finished' — persisted via settings
   sortDir: 'asc',          // 'asc' | 'desc' — persisted via settings
   currentView: 'library',  // 'library' | 'series' | 'stats' — kept in sync by switchView()
+  defaultStartView: 'last', // 'last' | 'stats' | 'lib:<id>' — persisted via settings (defaultStartView)
+  lastOpenedLibraryId: null, // persisted via settings (lastOpenedLibraryId) — used when defaultStartView === 'last'
   statsAllSeries: [],      // cached from the last loadStats() call, for re-rendering the hero after editing the goal
   statsEvents: [],         // cached per-volume/standalone read events for the current stats session
   statsGoal: null,         // annual reading goal — persisted via settings ('annualReadingGoal'); null = not set yet
@@ -256,7 +258,13 @@ function navIconSvg(key, size = 16) {
 async function loadLibraries() {
   state.libraries = await window.api.libraries.getAll();
   if (!state.currentLibraryId || !state.libraries.some(l => l.id === state.currentLibraryId)) {
-    state.currentLibraryId = state.libraries[0]?.id ?? null;
+    // Prefer the category the person was last in (if it still exists)
+    // over just always defaulting to the first one in the list — this is
+    // what makes "Last Opened Category" mean something across relaunches.
+    const preferred = (state.lastOpenedLibraryId && state.libraries.some(l => l.id === state.lastOpenedLibraryId))
+      ? state.lastOpenedLibraryId
+      : state.libraries[0]?.id ?? null;
+    state.currentLibraryId = preferred;
   }
   renderSidebarNav();
   applyCurrentLibraryHeader();
@@ -294,7 +302,7 @@ function applyCurrentLibraryHeader() {
   dom.libraryTitle.textContent = lib ? lib.name : 'Library';
 }
 
-function switchLibrary(id) {
+async function switchLibrary(id) {
   if (id === state.currentLibraryId && state.currentView === 'library') {
     if (state.autoHideSidebar) {
       el('sidebar')?.classList.remove('sidebar-visible');
@@ -304,9 +312,11 @@ function switchLibrary(id) {
   }
   el('btn-nav-stats')?.classList.remove('active');
   state.currentLibraryId = id;
+  state.lastOpenedLibraryId = id;
   renderSidebarNav();
   applyCurrentLibraryHeader();
   showLibrary();
+  await window.api.settings.set('lastOpenedLibraryId', String(id));
   if (state.autoHideSidebar) {
     el('sidebar')?.classList.remove('sidebar-visible');
     el('sidebar-backdrop')?.classList.remove('active');
@@ -329,6 +339,24 @@ function renderIconSwatches() {
       renderNavIconUploadPreview();
     });
   });
+}
+
+// Populates the Default Start View dropdown — options are fixed (Last
+// Opened Category, Reading Statistics) plus one entry per existing
+// category, so "pin to a specific category" always reflects the current
+// category list rather than going stale.
+function renderDefaultStartViewOptions() {
+  const select = el('setting-default-start-view');
+  if (!select) return;
+  const options = [
+    { value: 'last', label: 'Last Opened Category' },
+    { value: 'stats', label: 'Reading Statistics' },
+    ...state.libraries.map(l => ({ value: `lib:${l.id}`, label: l.name })),
+  ];
+  select.innerHTML = options.map(o => `<option value="${escapeHTML(o.value)}">${escapeHTML(o.label)}</option>`).join('');
+  // Falls back to 'last' if the saved value referenced a since-deleted
+  // category and isn't among the current options.
+  select.value = options.some(o => o.value === state.defaultStartView) ? state.defaultStartView : 'last';
 }
 
 function renderNavIconUploadPreview() {
@@ -436,8 +464,29 @@ async function init() {
   await loadBookTypes();
   await loadStatuses();
   renderStatusFilterButtons();
-  await loadLibrary();
   updateFilterBadges();
+  await applyDefaultStartView();
+}
+
+// Routes to whichever start view the person picked in User Settings —
+// their last-opened category (default, tracked via lastOpenedLibraryId),
+// the Reading Statistics page, or one specific pinned category. Falls
+// back to the normal "last opened" behavior if the pinned category was
+// since deleted, rather than erroring or showing a blank screen.
+async function applyDefaultStartView() {
+  if (state.defaultStartView === 'stats') {
+    await showStats();
+    return;
+  }
+  if (state.defaultStartView?.startsWith('lib:')) {
+    const pinnedId = parseInt(state.defaultStartView.slice(4));
+    if (state.libraries.some(l => l.id === pinnedId)) {
+      state.currentLibraryId = pinnedId;
+      renderSidebarNav();
+      applyCurrentLibraryHeader();
+    }
+  }
+  await loadLibrary();
 }
 
 // ─── Settings: Theme (Dark Mode) & View Modes ────────────────────────────────
@@ -458,6 +507,8 @@ async function loadSettings() {
   state.charViewMode = settings.charViewMode === 'list' ? 'list' : 'grid';
   state.sortField = ['title', 'author', 'rating', 'year_published', 'date_started', 'date_finished'].includes(settings.sortField) ? settings.sortField : 'title';
   state.sortDir = settings.sortDir === 'desc' ? 'desc' : 'asc';
+  state.defaultStartView = settings.defaultStartView || 'last';
+  state.lastOpenedLibraryId = settings.lastOpenedLibraryId ? parseInt(settings.lastOpenedLibraryId) : null;
   applyTheme();
   applySidebarAutoHide();
   applyGroupsCollapsed();
@@ -515,6 +566,8 @@ async function openUserSettingsModal() {
   document.querySelectorAll('#settings-theme-chips .type-chip').forEach(c => {
     c.classList.toggle('active', c.dataset.theme === state.theme);
   });
+
+  renderDefaultStartViewOptions();
 
   const settings = await window.api.settings.getAll();
   state.statsGoal = settings.annualReadingGoal ? parseInt(settings.annualReadingGoal) : null;
@@ -713,6 +766,13 @@ function bindEvents() {
         await window.api.settings.set('theme', state.theme);
       }
     });
+  });
+
+  // Default Start View (User Settings) — auto-saves on change.
+  el('setting-default-start-view')?.addEventListener('change', async (e) => {
+    state.defaultStartView = e.target.value;
+    await window.api.settings.set('defaultStartView', state.defaultStartView);
+    toast('Default start view saved');
   });
 
   // Reading Goals (User Settings) — auto-saves on blur, same pattern as

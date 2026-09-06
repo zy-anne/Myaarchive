@@ -3603,6 +3603,11 @@ body.sidebar-autohide .sidebar-backdrop.active {
   text-align: center;
 }
 
+.settings-row .settings-select-input {
+  flex: 0 0 200px;
+  width: 200px;
+}
+
 /* ── Danger Zone (User Settings) ─────────────────────────────────────────
    Same section/row shape as the rest of User Settings, but with a
    danger-tinted border and background wash so it visually separates
