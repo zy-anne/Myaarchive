@@ -1417,6 +1417,23 @@
           </div>
         </div>
 
+        <!-- Content -->
+        <div class="settings-section">
+          <div class="settings-section-title">Content</div>
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <div class="settings-row-label">Show NSFW Content</div>
+              <div class="settings-row-desc">When off, titles marked NSFW are hidden from your library entirely.
+                This is separate from the NSFW filter in More Filters, which only searches within what's shown here.
+              </div>
+            </div>
+            <label class="toggle-label">
+              <input type="checkbox" id="setting-show-nsfw">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </label>
+          </div>
+        </div>
+
         <!-- Reading Statuses -->
         <div class="settings-section">
           <div class="settings-section-title">Reading Statuses</div>
@@ -1427,6 +1444,19 @@
                 library.</div>
             </div>
             <button class="btn btn-secondary btn-sm" id="btn-open-manage-statuses">Manage…</button>
+          </div>
+        </div>
+
+        <!-- Data -->
+        <div class="settings-section">
+          <div class="settings-section-title">Data</div>
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <div class="settings-row-label">Export Library</div>
+              <div class="settings-row-desc">Download a JSON backup of every category, title, volume, character,
+                relationship, picture, and file reference you own.</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-export-json">Export JSON…</button>
           </div>
         </div>
 
@@ -1442,6 +1472,29 @@
             </div>
             <input type="number" id="setting-annual-goal" min="1" placeholder="e.g. 35" class="settings-goal-input">
           </div>
+        </div>
+
+
+        <!-- Keyboard Shortcuts -->
+        <div class="settings-section">
+          <div class="settings-section-title">Keyboard Shortcuts</div>
+          <div class="settings-shortcut-list">
+            <div class="settings-shortcut-row">
+              <span class="settings-shortcut-desc">Add new (title, volume, character, picture, or file — depending on
+                where you are)</span>
+              <span class="kbd-keys"><span class="kbd">Ctrl</span><span class="kbd">N</span></span>
+            </div>
+            <div class="settings-shortcut-row">
+              <span class="settings-shortcut-desc">Close the current modal, panel, or drawer</span>
+              <span class="kbd-keys"><span class="kbd">Esc</span></span>
+            </div>
+            <div class="settings-shortcut-row">
+              <span class="settings-shortcut-desc">Add a tag, content warning, or chapter/status note from its input
+                field</span>
+              <span class="kbd-keys"><span class="kbd">Enter</span></span>
+            </div>
+          </div>
+          <p class="form-hint" style="margin-top: var(--sp-2);">Use ⌘ instead of Ctrl on Mac.</p>
         </div>
 
         <!-- Danger Zone -->

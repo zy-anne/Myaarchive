@@ -46,6 +46,7 @@ let state = {
   selectedNavIconImage: null,
   theme: 'dark',
   autoHideSidebar: false,  // boolean — persisted via settings (autoHideSidebar)
+  showNsfwContent: true,   // boolean — persisted via settings (showNsfwContent); default true so nothing hides for existing users until they opt out
   groupsSectionCollapsed: false, // boolean — persisted via settings (groupsSectionCollapsed)
   charDrawerRelsCollapsed: false, // boolean — persisted via settings (charRelsSectionCollapsed)
   currentUser: null,       // current signed in user
@@ -586,6 +587,7 @@ async function loadSettings() {
   const settings = await window.api.settings.getAll();
   state.theme = settings.theme === 'light' ? 'light' : 'dark';
   state.autoHideSidebar = settings.autoHideSidebar === 'true';
+  state.showNsfwContent = settings.showNsfwContent !== 'false'; // opt-out: absent/anything but 'false' = shown
   state.groupsSectionCollapsed = settings.groupsSectionCollapsed === 'true';
   state.charDrawerRelsCollapsed = settings.charRelsSectionCollapsed === 'true';
   state.seriesViewMode = settings.seriesViewMode === 'card' ? 'card' : 'table';
@@ -638,6 +640,24 @@ async function setSidebarAutoHide(enabled) {
   toast(state.autoHideSidebar ? 'Auto-hide categories enabled' : 'Auto-hide categories disabled');
 }
 
+async function setSidebarAutoHide(enabled) {
+  state.autoHideSidebar = !!enabled;
+  applySidebarAutoHide();
+  await window.api.settings.set('autoHideSidebar', state.autoHideSidebar ? 'true' : 'false');
+  toast(state.autoHideSidebar ? 'Auto-hide categories enabled' : 'Auto-hide categories disabled');
+}
+
+// Global content preference (distinct from the per-search "NSFW: Yes/No"
+// facet in More Filters — that's a one-off query filter; this is a
+// persistent baseline that hides NSFW titles from the library entirely
+// until turned back on). Applied client-side in applyClientFilters().
+async function setShowNsfwContent(enabled) {
+  state.showNsfwContent = !!enabled;
+  await window.api.settings.set('showNsfwContent', state.showNsfwContent ? 'true' : 'false');
+  if (el('view-library').classList.contains('active')) loadLibrary();
+  toast(state.showNsfwContent ? 'NSFW content shown' : 'NSFW content hidden');
+}
+
 async function openUserSettingsModal() {
   const user = await window.api.auth.currentUser();
   state.currentUser = user;
@@ -647,6 +667,9 @@ async function openUserSettingsModal() {
 
   const autohideCheckbox = el('setting-autohide-sidebar');
   if (autohideCheckbox) autohideCheckbox.checked = !!state.autoHideSidebar;
+
+  const nsfwCheckbox = el('setting-show-nsfw');
+  if (nsfwCheckbox) nsfwCheckbox.checked = !!state.showNsfwContent;
 
   document.querySelectorAll('#settings-theme-chips .type-chip').forEach(c => {
     c.classList.toggle('active', c.dataset.theme === state.theme);
@@ -674,6 +697,40 @@ async function handleSignOut() {
   state.currentSeries = null;
   state.series = [];
   state.libraries = [];
+}
+
+async function handleSignOut() {
+  await window.api.auth.signOut();
+  closeModal('overlay-user-settings');
+  el('app').classList.add('hidden');
+  el('auth-gate').classList.remove('hidden');
+  el('auth-username').value = '';
+  el('auth-password').value = '';
+  el('auth-gate-status').textContent = 'Signed out successfully.';
+  state.currentSeries = null;
+  state.series = [];
+  state.libraries = [];
+}
+
+// Triggers the main-process save dialog + full-library JSON export
+// (main.js's export:json handler). That handler already returns false on
+// cancel and true on success — no error path to handle beyond a generic
+// catch, since the actual file-write happens entirely main-process side.
+async function handleExportJson() {
+  const btn = el('btn-export-json');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Exporting…';
+  try {
+    const ok = await window.api.data.exportJson();
+    if (ok) toast('Library exported');
+    // ok === false just means the save dialog was canceled — not an error.
+  } catch (e) {
+    toast(e.message || 'Export failed', true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
 }
 
 // ─── Account: Change Password ───────────────────────────────────────────
@@ -872,6 +929,7 @@ function bindEvents() {
   el('btn-open-settings')?.addEventListener('click', openUserSettingsModal);
   el('btn-settings-signout')?.addEventListener('click', handleSignOut);
   el('btn-auth-signout')?.addEventListener('click', handleSignOut);
+  el('btn-export-json')?.addEventListener('click', handleExportJson);
 
   // Change Password
   el('btn-open-change-password')?.addEventListener('click', openChangePasswordModal);
@@ -890,9 +948,8 @@ function bindEvents() {
   el('f-delete-account-password')?.addEventListener('input', updateDeleteAccountButtonState);
   el('btn-confirm-delete-account')?.addEventListener('click', handleDeleteAccountSubmit);
 
-  // Settings Modal Controls
-  el('setting-autohide-sidebar')?.addEventListener('change', (e) => {
-    setSidebarAutoHide(e.target.checked);
+  el('setting-show-nsfw')?.addEventListener('change', (e) => {
+    setShowNsfwContent(e.target.checked);
   });
 
   document.querySelectorAll('#settings-theme-chips .type-chip').forEach(chip => {
@@ -1496,6 +1553,7 @@ function applyClientFilters(list) {
   const q = state.searchQuery.trim().toLowerCase();
 
   return list.filter(s => {
+    if (!state.showNsfwContent && s.is_nsfw) return false;
     if (state.filterStatus !== 'All' && s.status !== state.filterStatus) return false;
     if (q && !(s.title || '').toLowerCase().includes(q) && !(s.author || '').toLowerCase().includes(q)) return false;
 

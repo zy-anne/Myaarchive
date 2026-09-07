@@ -117,6 +117,9 @@ contextBridge.exposeInMainWorld('api', {
     getImageData: (p) => invoke('files:getImageData', p),
     getPathForFile: (file) => webUtils.getPathForFile(file),
   },
+  data: {
+    exportJson: () => invoke('export:json'),
+  },
   windowControls: {
     minimize: () => invoke('window:minimize'),
     maximize: () => invoke('window:maximize'),

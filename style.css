@@ -3843,6 +3843,50 @@ body.sidebar-autohide .sidebar-backdrop.active {
   line-height: 1.45;
 }
 
+/* ── Keyboard Shortcuts List (User Settings) ─────────────────────────────
+   Reuses .settings-row's label/desc sizing but pairs each description
+   with a small "kbd" badge instead of a control, since these rows are
+   reference-only (nothing to toggle or click). */
+.settings-shortcut-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.settings-shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+.settings-shortcut-desc {
+  font-size: 13px;
+  color: var(--text-main);
+  line-height: 1.45;
+}
+
+.kbd-keys {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 3px 7px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-main);
+}
+
 .settings-row .settings-goal-input {
   flex: 0 0 90px;
   width: 90px;

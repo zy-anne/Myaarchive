@@ -378,36 +378,22 @@ async function seriesUpdate(db, ownerId, id, data) {
     if (targetLib) targetLibraryId = data.library_id;
   }
 
-  // Same reasoning as seriesCreate above: the row UPDATE plus every
-  // tag/genre/warning upsert (and the group-detach, if the category
-  // changed) now share one transaction/one commit instead of each being
-  // its own auto-committed statement.
-  const tx = await db.transaction('write');
-  try {
-    await tx.execute({
-      sql: `
-        UPDATE series SET title=?, author=?, status=?, synopsis=?, kind=?, overall_thoughts=?, chapter_thoughts=?, cover_image_path=?,
-          book_type=?, rating=?, original_language=?, country_of_origin=?, language_read=?, artist=?, year_published=?,
-          date_started=?, date_finished=?, status_country_of_origin=?, licensed_english=?, completely_translated=?,
-          original_publisher=?, english_publisher=?, is_nsfw=?, standalone_chapter_count=?, library_id=?
-        WHERE id=?
-      `,
-      args: [data.title, data.author || null, data.status || 'Planning', data.synopsis || null,
-      data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
-      ...seriesExtraArgs(data),
-        targetLibraryId,
-        id],
-    });
-    if (data.tags !== undefined) await upsertSeriesTags(tx, ownerId, id, data.tags);
-    if (data.genres !== undefined) await upsertSeriesGenres(tx, id, data.genres);
-    if (data.content_warnings !== undefined) await upsertSeriesContentWarnings(tx, ownerId, id, data.content_warnings);
-    if (Number(targetLibraryId) !== Number(existing.library_id)) {
-      await detachSeriesFromGroups(tx, id, targetLibraryId);
-    }
-    await tx.commit();
-  } catch (err) {
-    await tx.rollback();
-    throw err;
+  await run(db, `
+    UPDATE series SET title=?, author=?, status=?, synopsis=?, kind=?, overall_thoughts=?, chapter_thoughts=?, cover_image_path=?,
+      book_type=?, rating=?, original_language=?, country_of_origin=?, language_read=?, artist=?, year_published=?,
+      date_started=?, date_finished=?, status_country_of_origin=?, licensed_english=?, completely_translated=?,
+      original_publisher=?, english_publisher=?, is_nsfw=?, standalone_chapter_count=?, library_id=?
+    WHERE id=?
+  `, [data.title, data.author || null, data.status || 'Planning', data.synopsis || null,
+  data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
+  ...seriesExtraArgs(data),
+    targetLibraryId,
+    id]);
+  if (data.tags !== undefined) await upsertSeriesTags(db, ownerId, id, data.tags);
+  if (data.genres !== undefined) await upsertSeriesGenres(db, id, data.genres);
+  if (data.content_warnings !== undefined) await upsertSeriesContentWarnings(db, ownerId, id, data.content_warnings);
+  if (Number(targetLibraryId) !== Number(existing.library_id)) {
+    await detachSeriesFromGroups(db, id, targetLibraryId);
   }
   return true;
 }
