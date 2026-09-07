@@ -755,6 +755,16 @@ function updateChangePasswordButtonState() {
   const current = el('f-change-password-current').value;
   const next = el('f-change-password-new').value;
   const confirm = el('f-change-password-confirm').value;
+  const errorEl = el('change-password-error');
+
+  // Live feedback as soon as there's something to compare against — only
+  // once the person has started typing into Confirm, so the field doesn't
+  // flash an error before they've had a chance to type anything there.
+  // The button stays disabled until this resolves, so without this the
+  // mismatch message in handleChangePasswordSubmit() below could never
+  // actually be seen — Save just silently wouldn't click.
+  errorEl.textContent = (confirm.length > 0 && next !== confirm) ? "New passwords don't match" : '';
+
   const valid = current.length > 0 && next.length >= 4 && next === confirm;
   el('btn-confirm-change-password').disabled = !valid;
 }
