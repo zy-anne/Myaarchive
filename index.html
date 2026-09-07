@@ -673,7 +673,17 @@
                   <option value="Manhwa">
                   <option value="Manhua">
                   <option value="Comic">
+                  <option value="Fanfic">
                 </datalist>
+              </div>
+            </div>
+
+            <div class="form-row hidden" id="fandom-group">
+              <div class="form-group">
+                <label for="f-s-fandom">Fandom</label>
+                <input id="f-s-fandom" type="text" list="fandom-options" placeholder="e.g. Harry Potter, Naruto"
+                  maxlength="200" autocomplete="off">
+                <datalist id="fandom-options"></datalist>
               </div>
             </div>
 
@@ -1273,6 +1283,10 @@
           <div class="form-group">
             <label>Publisher</label>
             <div class="filter-checkbox-list" id="filter-publisher-list"></div>
+          </div>
+          <div class="form-group">
+            <label>Fandom</label>
+            <div class="filter-checkbox-list" id="filter-fandom-list"></div>
           </div>
         </div>
       </div>

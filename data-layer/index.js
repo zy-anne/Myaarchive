@@ -306,7 +306,8 @@ const SERIES_EXTRA_FIELDS = [
   ['original_publisher', 'TEXT'],
   ['english_publisher', 'TEXT'],
   ['is_nsfw', 'INTEGER NOT NULL DEFAULT 0'],
-  ['standalone_chapter_count', 'INTEGER'], // ← NEW: total chapter count for standalone titles only
+  ['standalone_chapter_count', 'INTEGER'],
+  ['fandom', 'TEXT'], // ← NEW: only meaningful when book_type === 'Fanfic', but stored unconditionally like everything else here
 ];
 
 function seriesExtraArgs(data) {
@@ -326,7 +327,8 @@ function seriesExtraArgs(data) {
     data.original_publisher || null,
     data.english_publisher || null,
     data.is_nsfw ? 1 : 0,
-    data.standalone_chapter_count || null, // ← NEW
+    data.standalone_chapter_count || null,
+    data.fandom || null,
   ];
 }
 
@@ -342,8 +344,8 @@ async function seriesCreate(db, ownerId, data) {
                 title, author, status, synopsis, library_id, kind, overall_thoughts, chapter_thoughts, cover_image_path,
                 book_type, rating, original_language, country_of_origin, language_read, artist, year_published,
                 date_started, date_finished, status_country_of_origin, licensed_english, completely_translated,
-                original_publisher, english_publisher, is_nsfw, standalone_chapter_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                original_publisher, english_publisher, is_nsfw, standalone_chapter_count, fandom
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         data.title, data.author || null, data.status || 'Planning', data.synopsis || null, data.library_id,
         data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
@@ -382,7 +384,7 @@ async function seriesUpdate(db, ownerId, id, data) {
     UPDATE series SET title=?, author=?, status=?, synopsis=?, kind=?, overall_thoughts=?, chapter_thoughts=?, cover_image_path=?,
       book_type=?, rating=?, original_language=?, country_of_origin=?, language_read=?, artist=?, year_published=?,
       date_started=?, date_finished=?, status_country_of_origin=?, licensed_english=?, completely_translated=?,
-      original_publisher=?, english_publisher=?, is_nsfw=?, standalone_chapter_count=?, library_id=?
+      original_publisher=?, english_publisher=?, is_nsfw=?, standalone_chapter_count=?, fandom=?, library_id=?
     WHERE id=?
   `, [data.title, data.author || null, data.status || 'Planning', data.synopsis || null,
   data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
@@ -441,6 +443,7 @@ async function seriesCopy(db, ownerId, id, targetLibraryId, options = {}) {
     english_publisher: existing.english_publisher,
     is_nsfw: existing.is_nsfw ? 1 : 0,
     standalone_chapter_count: existing.standalone_chapter_count,
+    fandom: existing.fandom,
     tags: existing.tags.map(t => t.name),
     genres: existing.genres.map(g => g.name),
     content_warnings: existing.content_warnings.map(w => w.name),

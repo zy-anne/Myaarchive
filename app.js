@@ -12,6 +12,7 @@ let state = {
   allTags: [],
   selectedTags: [],
   allBookTypes: [], // custom book types the signed-in user has used, across all of THEIR OWN categories — never shared across accounts (see loadBookTypes)
+  allFandoms: [], // same idea, but for the Fandom field (only relevant when Book Type is "Fanfic")
   allGenres: [],
   selectedGenres: [],
   allWarnings: [],
@@ -26,6 +27,7 @@ let state = {
   filterYearMin: '',
   filterYearMax: '',
   filterBookTypes: [],
+  filterFandoms: [],
   filterLanguages: [],
   filterCountries: [],
   filterAuthors: [],
@@ -1151,6 +1153,7 @@ function bindEvents() {
     state.filterYearMin = '';
     state.filterYearMax = '';
     state.filterBookTypes = [];
+    state.filterFandoms = [];
     state.filterLanguages = [];
     state.filterCountries = [];
     state.filterAuthors = [];
@@ -1261,6 +1264,8 @@ function bindEvents() {
       el('standalone-chapter-count-group').classList.toggle('hidden', e.currentTarget.dataset.kind !== 'standalone');
     });
   });
+  // Book Type → Fandom field visibility (Fanfic only)
+  el('f-s-booktype').addEventListener('input', applyFandomFieldVisibility);
 
   // Series Cover (standalone titles only)
   el('series-cover-picker').addEventListener('click', async () => {
@@ -1593,8 +1598,9 @@ function applyClientFilters(list) {
       if (!y || y > parseInt(state.filterYearMax)) return false;
     }
 
+
     if (state.filterBookTypes.length && !state.filterBookTypes.includes((s.book_type || '').trim())) return false;
-    if (state.filterLanguages.length && !state.filterLanguages.includes((s.original_language || '').trim())) return false;
+    if (state.filterFandoms.length && !state.filterFandoms.includes((s.fandom || '').trim())) return false;
     if (state.filterCountries.length && !state.filterCountries.includes((s.country_of_origin || '').trim())) return false;
     if (state.filterAuthors.length && !state.filterAuthors.includes((s.author || '').trim())) return false;
     if (state.filterArtists.length && !state.filterArtists.includes((s.artist || '').trim())) return false;
@@ -1806,6 +1812,7 @@ function renderMoreFilterPanel() {
 
   const facets = [
     ['filter-booktype-list', 'book_type', 'filterBookTypes'],
+    ['filter-fandom-list', 'fandom', 'filterFandoms'],
     ['filter-language-list', 'original_language', 'filterLanguages'],
     ['filter-country-list', 'country_of_origin', 'filterCountries'],
     ['filter-author-list', 'author', 'filterAuthors'],
@@ -2994,6 +3001,7 @@ function renderHeroDetailsColumns(s) {
   if (s.rating) items.push({ label: 'Rating', starRating: s.rating });
   if (s.kind === 'standalone' && s.standalone_chapter_count) items.push({ label: 'Chapter Count', value: s.standalone_chapter_count });
   if (s.book_type) items.push({ label: 'Book Type', value: s.book_type });
+  if (s.fandom) items.push({ label: 'Fandom', value: s.fandom });
   if (s.date_started) items.push({ label: 'Date Started', value: formatDate(s.date_started), editableDateField: 'date_started', rawDate: s.date_started });
   if (s.date_finished) items.push({ label: 'Date Finished', value: formatDate(s.date_finished), editableDateField: 'date_finished', rawDate: s.date_finished });
   if (s.artist) items.push({ label: 'Artist(s)', value: s.artist });
@@ -3115,6 +3123,7 @@ async function quickUpdateSeriesField(field, value) {
     english_publisher: s.english_publisher,
     is_nsfw: s.is_nsfw,
     standalone_chapter_count: s.standalone_chapter_count,
+    fandom: s.fandom,
     [field]: value,
   };
   await window.api.series.update(s.id, d);
@@ -3160,6 +3169,7 @@ async function saveStandaloneThoughts() {
     english_publisher: s.english_publisher,
     is_nsfw: s.is_nsfw,
     standalone_chapter_count: s.standalone_chapter_count,
+    fandom: s.fandom,
   };
   await window.api.series.update(s.id, d);
   toast('Thoughts saved');
@@ -3405,7 +3415,7 @@ function updateFilterBadges() {
   tCount.classList.toggle('hidden', state.filterTags.length === 0);
   el('btn-tag-filter').classList.toggle('active', state.filterTags.length > 0);
 
-  const moreCount = state.filterBookTypes.length + state.filterLanguages.length + state.filterCountries.length
+  const moreCount = state.filterBookTypes.length + state.filterFandoms.length + state.filterLanguages.length + state.filterCountries.length
     + state.filterAuthors.length + state.filterArtists.length + state.filterPublishers.length
     + state.filterTranslated.length + state.filterNsfw.length + (state.filterRating > 0 ? 1 : 0)
     + (state.filterYearMin ? 1 : 0) + (state.filterYearMax ? 1 : 0);
@@ -3614,11 +3624,14 @@ function addWarning(name) {
 // window.api.series.getAll({ }) with no libraryId returns every series this
 // account owns; main.js's requireUser() already enforces that server-side,
 // so this can never pick up another account's book types.
-const BOOK_TYPE_SEED_OPTIONS = ['Novel', 'Light Novel', 'Web Novel', 'Graphic Novel', 'Manga', 'Manhwa', 'Manhua', 'Comic'];
+const BOOK_TYPE_SEED_OPTIONS = ['Novel', 'Light Novel', 'Web Novel', 'Graphic Novel', 'Manga', 'Manhwa', 'Manhua', 'Comic', 'Fanfic'];
 
 async function loadBookTypes() {
   const allOwnSeries = await window.api.series.getAll({});
   state.allBookTypes = [...new Set(allOwnSeries.map(s => (s.book_type || '').trim()).filter(Boolean))];
+  // Same per-user scoping as book types — piggybacks on the same fetch
+  // rather than a second full-library round trip.
+  state.allFandoms = [...new Set(allOwnSeries.map(s => (s.fandom || '').trim()).filter(Boolean))];
 }
 
 function renderBookTypeOptions() {
@@ -3626,6 +3639,22 @@ function renderBookTypeOptions() {
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   const datalist = el('book-type-options');
   if (datalist) datalist.innerHTML = all.map(t => `<option value="${escapeHTML(t)}">`).join('');
+}
+
+// Same idea as renderBookTypeOptions, for Fandom — no seed list (there's
+// no universal "starter" set the way there is for book types), just
+// whatever this user has already typed across their own titles.
+function renderFandomOptions() {
+  const datalist = el('fandom-options');
+  if (datalist) datalist.innerHTML = state.allFandoms.map(f => `<option value="${escapeHTML(f)}">`).join('');
+}
+
+// Fandom only makes sense for Fanfic-type titles — shown/hidden live as
+// the Book Type field changes, same idea as the cover/chapter-count
+// fields toggling on Series vs Standalone.
+function applyFandomFieldVisibility() {
+  const isFanfic = el('f-s-booktype').value.trim().toLowerCase() === 'fanfic';
+  el('fandom-group').classList.toggle('hidden', !isFanfic);
 }
 
 // ─── Character "Appearances" field label/placeholder ───────────────────────
@@ -3698,6 +3727,9 @@ function openSeriesModal(series = null) {
   el('f-s-rating').value = state.selectedRating;
   renderBookTypeOptions();
   el('f-s-booktype').value = series?.book_type || '';
+  renderFandomOptions();
+  el('f-s-fandom').value = series?.fandom || '';
+  applyFandomFieldVisibility();
   el('f-s-date-started').value = series?.date_started || '';
   el('f-s-date-finished').value = series?.date_finished || '';
   el('f-s-artist').value = series?.artist || '';
@@ -3759,6 +3791,7 @@ async function saveSeries() {
     // Additional details (all optional)
     rating: parseInt(el('f-s-rating').value) || 0,
     book_type: el('f-s-booktype').value.trim(),
+    fandom: el('f-s-booktype').value.trim().toLowerCase() === 'fanfic' ? el('f-s-fandom').value.trim() : null,
     date_started: el('f-s-date-started').value || null,
     date_finished: el('f-s-date-finished').value || null,
     artist: el('f-s-artist').value.trim(),
