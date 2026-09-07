@@ -230,16 +230,6 @@ function addTimelineNoteEntry(stateKey, inputId, listId, hiddenId, counterId) {
   input.focus();
 }
 
-function addTimelineNoteEntry() {
-  const input = el('f-v-notes-new');
-  const text = input.value.trim();
-  if (!text) return;
-  state.volNotesEntries.push(text);
-  input.value = '';
-  renderTimelineNotesInput();
-  input.focus();
-}
-
 // Images are stored as R2 object keys now, not local paths, so an <img> can't
 // point straight at the stored value the way it used to. Render markup with
 // data-key="<the key>" and no src, then call this right after — it fetches
@@ -2776,15 +2766,26 @@ async function openSeriesDetail(id) {
 }
 
 async function loadSeriesData(id) {
-  const s = await window.api.series.get(id);
+  // None of these seven reads depend on each other — fire them together
+  // instead of round-tripping one at a time. On a title with a lot of
+  // volumes/characters/gallery images, this was a real chunk of the delay
+  // between Save and the detail view actually refreshing.
+  const [s, volumes, characters, relationships, galleryImages, attachments, linkAttachments] = await Promise.all([
+    window.api.series.get(id),
+    window.api.volumes.getBySeries(id),
+    window.api.characters.getBySeries(id),
+    window.api.relationships.getBySeries(id),
+    window.api.gallery.getBySeries(id),
+    window.api.attachments.getBySeries(id),
+    window.api.links.getBySeries(id),
+  ]);
   state.currentSeries = s;
-  state.volumes = await window.api.volumes.getBySeries(id);
-  state.characters = await window.api.characters.getBySeries(id);
-  state.relationships = await window.api.relationships.getBySeries(id);
-  state.galleryImages = await window.api.gallery.getBySeries(id);
-  state.attachments = await window.api.attachments.getBySeries(id);
-  state.linkAttachments = await window.api.links.getBySeries(id);
-
+  state.volumes = volumes;
+  state.characters = characters;
+  state.relationships = relationships;
+  state.galleryImages = galleryImages;
+  state.attachments = attachments;
+  state.linkAttachments = linkAttachments;
   renderSeriesHero(s);
   renderCharacters();
   renderCharactersList();
@@ -3129,8 +3130,8 @@ function renderStatusFilterButtons() {
   const container = el('status-filter-buttons');
   const entries = [{ name: 'All' }, ...state.allStatuses];
   container.innerHTML = entries.map(s => `
-    < button class="filter-btn ${state.filterStatus === s.name ? 'active' : ''}" data - status="${escapeHTML(s.name)}" > ${escapeHTML(s.name)}</button >
-      `).join('');
+    <button class="filter-btn ${state.filterStatus === s.name ? 'active' : ''}" data-status="${escapeHTML(s.name)}">${escapeHTML(s.name)}</button>
+  `).join('');
   container.querySelectorAll('.filter-btn[data-status]').forEach(btn => {
     btn.addEventListener('click', () => {
       container.querySelectorAll('.filter-btn[data-status]').forEach(b => b.classList.remove('active'));
@@ -3182,12 +3183,12 @@ function renderStatusManageList() {
     return;
   }
   container.innerHTML = state.allStatuses.map(s => `
-    < div class="status-manage-row" data - id="${s.id}" >
+    <div class="status-manage-row" data-id="${s.id}">
       <input type="color" class="status-color-input" value="${s.color}" data-id="${s.id}" title="Color">
-        <input type="text" class="status-name-input" value="${escapeHTML(s.name)}" data-id="${s.id}" maxlength="50" autocomplete="off">
-          <button type="button" class="btn btn-danger-ghost btn-sm status-delete-btn" data-id="${s.id}" title="Delete status">✕</button>
-        </div>
-        `).join('');
+      <input type="text" class="status-name-input" value="${escapeHTML(s.name)}" data-id="${s.id}" maxlength="50" autocomplete="off">
+      <button type="button" class="btn btn-danger-ghost btn-sm status-delete-btn" data-id="${s.id}" title="Delete status">✕</button>
+    </div>
+  `).join('');
 
   container.querySelectorAll('.status-color-input').forEach(input => {
     input.addEventListener('change', () => saveStatusEdit(parseInt(input.dataset.id)));
@@ -3734,10 +3735,16 @@ async function saveSeries() {
       switchLibrary(selectedLibId);
     }
   }
+  // Book Type no longer re-fetches this user's entire library (across
+  // every category) just to recompute the autocomplete list — we already
+  // know the exact value that was just saved, so fold it into the
+  // in-memory list directly instead.
+  if (d.book_type && !state.allBookTypes.includes(d.book_type)) {
+    state.allBookTypes.push(d.book_type);
+  }
   loadTags();
   loadGenres();
   loadContentWarnings();
-  loadBookTypes();
   if (el('view-library').classList.contains('active')) loadLibrary();
 }
 

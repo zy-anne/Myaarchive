@@ -351,12 +351,16 @@ async function seriesCreate(db, ownerId, data) {
       ],
     });
     const seriesId = Number(r.lastInsertRowid);
+    // Tag/genre/warning upserts now run INSIDE this same transaction
+    // (pass `tx`, not `db`) instead of as their own separately-committed
+    // statements afterward. A book with several tags/genres/warnings used
+    // to trigger a dozen-plus individual commits — each one a disk fsync
+    // — for a single save. Folding it all into one transaction cuts that
+    // to a single commit, which is what was making Save feel like a hang.
+    await upsertSeriesTags(tx, ownerId, seriesId, data.tags || []);
+    await upsertSeriesGenres(tx, seriesId, data.genres || []);
+    await upsertSeriesContentWarnings(tx, ownerId, seriesId, data.content_warnings || []);
     await tx.commit();
-    // Tag/genre/warning upserts run outside the transaction (they're
-    // idempotent OR IGNORE upserts, and libSQL transactions don't nest).
-    await upsertSeriesTags(db, ownerId, seriesId, data.tags || []);
-    await upsertSeriesGenres(db, seriesId, data.genres || []);
-    await upsertSeriesContentWarnings(db, ownerId, seriesId, data.content_warnings || []);
     return seriesId;
   } catch (err) {
     await tx.rollback();
@@ -374,22 +378,36 @@ async function seriesUpdate(db, ownerId, id, data) {
     if (targetLib) targetLibraryId = data.library_id;
   }
 
-  await run(db, `
-    UPDATE series SET title=?, author=?, status=?, synopsis=?, kind=?, overall_thoughts=?, chapter_thoughts=?, cover_image_path=?,
-      book_type=?, rating=?, original_language=?, country_of_origin=?, language_read=?, artist=?, year_published=?,
-      date_started=?, date_finished=?, status_country_of_origin=?, licensed_english=?, completely_translated=?,
-      original_publisher=?, english_publisher=?, is_nsfw=?, standalone_chapter_count=?, library_id=?
-    WHERE id=?
-  `, [data.title, data.author || null, data.status || 'Planning', data.synopsis || null,
-  data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
-  ...seriesExtraArgs(data),
-    targetLibraryId,
-    id]);
-  if (data.tags !== undefined) await upsertSeriesTags(db, ownerId, id, data.tags);
-  if (data.genres !== undefined) await upsertSeriesGenres(db, id, data.genres);
-  if (data.content_warnings !== undefined) await upsertSeriesContentWarnings(db, ownerId, id, data.content_warnings);
-  if (Number(targetLibraryId) !== Number(existing.library_id)) {
-    await detachSeriesFromGroups(db, id, targetLibraryId);
+  // Same reasoning as seriesCreate above: the row UPDATE plus every
+  // tag/genre/warning upsert (and the group-detach, if the category
+  // changed) now share one transaction/one commit instead of each being
+  // its own auto-committed statement.
+  const tx = await db.transaction('write');
+  try {
+    await tx.execute({
+      sql: `
+        UPDATE series SET title=?, author=?, status=?, synopsis=?, kind=?, overall_thoughts=?, chapter_thoughts=?, cover_image_path=?,
+          book_type=?, rating=?, original_language=?, country_of_origin=?, language_read=?, artist=?, year_published=?,
+          date_started=?, date_finished=?, status_country_of_origin=?, licensed_english=?, completely_translated=?,
+          original_publisher=?, english_publisher=?, is_nsfw=?, standalone_chapter_count=?, library_id=?
+        WHERE id=?
+      `,
+      args: [data.title, data.author || null, data.status || 'Planning', data.synopsis || null,
+      data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
+      ...seriesExtraArgs(data),
+        targetLibraryId,
+        id],
+    });
+    if (data.tags !== undefined) await upsertSeriesTags(tx, ownerId, id, data.tags);
+    if (data.genres !== undefined) await upsertSeriesGenres(tx, id, data.genres);
+    if (data.content_warnings !== undefined) await upsertSeriesContentWarnings(tx, ownerId, id, data.content_warnings);
+    if (Number(targetLibraryId) !== Number(existing.library_id)) {
+      await detachSeriesFromGroups(tx, id, targetLibraryId);
+    }
+    await tx.commit();
+  } catch (err) {
+    await tx.rollback();
+    throw err;
   }
   return true;
 }
@@ -1288,6 +1306,31 @@ async function ensureCharacterExtraColumns(db) {
   } catch { /* no characters table yet — nothing to migrate */ }
 }
 
+// ─── Performance: indexes on frequently-filtered columns ────────────────
+// A handful of the most-queried columns (every *_series lookup, the
+// relationship graph's from/to lookups, library-scoped series lookups)
+// have no index at all today, which turns into a full table scan on every
+// query as a library grows — including the heavy SERIES_SELECT subqueries
+// that run right after every save. CREATE INDEX IF NOT EXISTS is safe to
+// run on every launch.
+async function ensureIndexes(db) {
+  const statements = [
+    `CREATE INDEX IF NOT EXISTS idx_series_library ON series(library_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_volumes_series ON volumes(series_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_characters_series ON characters(series_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_relationships_from ON relationships(from_character_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_relationships_to ON relationships(to_character_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_gallery_series ON gallery_images(series_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_attachments_series ON attachments(series_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_links_series ON link_attachments(series_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_group_items_series ON series_group_items(series_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_libraries_owner ON libraries(owner_id)`,
+  ];
+  for (const sql of statements) {
+    try { await db.execute(sql); } catch (err) { console.warn('[schema] index creation skipped:', err.message); }
+  }
+}
+
 // ─── Account Deletion (Danger Zone) ────────────────────────────────────
 // Cascade-deletes every row owned by a single user across the whole
 // schema, then removes the user row itself. There are no SQLite foreign
@@ -1416,6 +1459,7 @@ module.exports = {
   ensureSeriesExtraColumns,
   ensureVolumesExtraColumns,
   ensureCharacterExtraColumns,
+  ensureIndexes,
   libraries: { getAll: librariesGetAll, create: librariesCreate, update: librariesUpdate, delete: librariesDelete },
   tags: { getAll: tagsGetAll, create: tagsCreate },
   genres: { getAll: genresGetAll },

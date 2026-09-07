@@ -90,6 +90,7 @@ async function bootstrapSchema() {
   // missing, so a brand-new Turso database (a friend's first run) works
   // out of the box.
   await dataLayer.ensureCoreSchema(db);
+  await dataLayer.ensureIndexes(db);
   // Book-detail expansion: date started/finished, book type, rating,
   // original language/origin, artist, publishers, licensing status, etc.
   // (series) and per-volume publication date (volumes). Both are additive
