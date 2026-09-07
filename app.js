@@ -13,7 +13,7 @@ let state = {
   selectedTags: [],
   allBookTypes: [], // custom book types the signed-in user has used, across all of THEIR OWN categories — never shared across accounts (see loadBookTypes)
   allFandoms: [], // same idea, but for the Fandom field (only relevant when Book Type is "Fanfic")
-  allGenres: [],
+  selectedFandoms: [], // working chip list while the series form is open — mirrors selectedTags/selectedWarnings
   selectedGenres: [],
   allWarnings: [],
   selectedWarnings: [],
@@ -123,6 +123,11 @@ const dom = {
   warningDropdown: el('warning-dropdown'),
   warningChips: el('warning-chips'),
 
+  fandomWrap: el('fandom-input-wrap'),
+  fandomInput: el('f-s-fandom'),
+  fandomDropdown: el('fandom-dropdown'),
+  fandomChips: el('fandom-chips'),
+
   groupsSection: el('series-groups-section'),
   groupsList: el('series-groups-list'),
   groupsCount: el('groups-count'),
@@ -158,6 +163,10 @@ function parseTimelineEntries(text) {
     .split(/\n\s*\n/)
     .map(e => e.trim())
     .filter(Boolean);
+}
+
+function parseFandomList(str) {
+  return (str || '').split(',').map(f => f.trim()).filter(Boolean);
 }
 
 function renderChapterNotesTimeline(text) {
@@ -1306,6 +1315,15 @@ function bindEvents() {
       dom.warningDropdown.classList.add('hidden');
     }
   });
+  dom.fandomWrap.addEventListener('click', () => dom.fandomInput.focus());
+  dom.fandomInput.addEventListener('input', handleFandomInput);
+  dom.fandomInput.addEventListener('focus', handleFandomInput);
+  dom.fandomInput.addEventListener('keydown', handleFandomKeydown);
+  document.addEventListener('click', (e) => {
+    if (!dom.fandomWrap.contains(e.target) && !dom.fandomDropdown.contains(e.target)) {
+      dom.fandomDropdown.classList.add('hidden');
+    }
+  });
 
   // Tabs
   dom.tabDetails.addEventListener('click', () => switchTab('details'));
@@ -1600,7 +1618,10 @@ function applyClientFilters(list) {
 
 
     if (state.filterBookTypes.length && !state.filterBookTypes.includes((s.book_type || '').trim())) return false;
-    if (state.filterFandoms.length && !state.filterFandoms.includes((s.fandom || '').trim())) return false;
+    if (state.filterFandoms.length) {
+      const seriesFandoms = parseFandomList(s.fandom);
+      if (!state.filterFandoms.some(f => seriesFandoms.includes(f))) return false;
+    }
     if (state.filterCountries.length && !state.filterCountries.includes((s.country_of_origin || '').trim())) return false;
     if (state.filterAuthors.length && !state.filterAuthors.includes((s.author || '').trim())) return false;
     if (state.filterArtists.length && !state.filterArtists.includes((s.artist || '').trim())) return false;
@@ -1774,6 +1795,15 @@ function uniquePublishers(list) {
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 
+// Fandom is comma-delimited multi-value (see parseFandomList) — unlike
+// the other More Filters facets, this needs individual fandom tokens
+// across all series, not each series's whole raw fandom string.
+function uniqueFandomValues(list) {
+  const set = new Set();
+  list.forEach(s => parseFandomList(s.fandom).forEach(f => set.add(f)));
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
 // Renders one More Filters checkbox facet. `allValues` comes from the
 // unfiltered library list (so unchecking everything doesn't also empty
 // the list of things you could check), `selected` is the current
@@ -1812,7 +1842,6 @@ function renderMoreFilterPanel() {
 
   const facets = [
     ['filter-booktype-list', 'book_type', 'filterBookTypes'],
-    ['filter-fandom-list', 'fandom', 'filterFandoms'],
     ['filter-language-list', 'original_language', 'filterLanguages'],
     ['filter-country-list', 'country_of_origin', 'filterCountries'],
     ['filter-author-list', 'author', 'filterAuthors'],
@@ -1824,6 +1853,12 @@ function renderMoreFilterPanel() {
       updateFilterBadges();
       loadLibrary();
     });
+  });
+
+  renderFilterCheckboxList('filter-fandom-list', uniqueFandomValues(state.allSeriesRaw), state.filterFandoms, (value, checked) => {
+    state.filterFandoms = checked ? [...state.filterFandoms, value] : state.filterFandoms.filter(v => v !== value);
+    updateFilterBadges();
+    loadLibrary();
   });
 
   renderFilterCheckboxList('filter-publisher-list', uniquePublishers(state.allSeriesRaw), state.filterPublishers, (value, checked) => {
@@ -2916,7 +2951,7 @@ function renderSeriesHero(s) {
     toast('Marked as started today');
   });
   el('btn-mark-finished')?.addEventListener('click', async () => {
-    await quickUpdateSeriesField('date_finished', todayISODate());
+    await quickUpdateSeriesFields({ date_finished: todayISODate(), status: resolveFinishedStatusName() });
     toast('Marked as finished today');
   });
 
@@ -3001,7 +3036,7 @@ function renderHeroDetailsColumns(s) {
   if (s.rating) items.push({ label: 'Rating', starRating: s.rating });
   if (s.kind === 'standalone' && s.standalone_chapter_count) items.push({ label: 'Chapter Count', value: s.standalone_chapter_count });
   if (s.book_type) items.push({ label: 'Book Type', value: s.book_type });
-  if (s.fandom) items.push({ label: 'Fandom', value: s.fandom });
+  if (s.fandom) items.push({ label: 'Fandom(s)', value: s.fandom });
   if (s.date_started) items.push({ label: 'Date Started', value: formatDate(s.date_started), editableDateField: 'date_started', rawDate: s.date_started });
   if (s.date_finished) items.push({ label: 'Date Finished', value: formatDate(s.date_finished), editableDateField: 'date_finished', rawDate: s.date_finished });
   if (s.artist) items.push({ label: 'Artist(s)', value: s.artist });
@@ -3086,13 +3121,13 @@ function openStandaloneThoughtsModal() {
   el('f-standalone-thoughts').focus();
 }
 
-// Applies a single-field change to the current series without needing the
-// full Edit modal. Builds the same complete payload seriesUpdate expects
-// (every column, since it's a full-row UPDATE — see data-layer/index.js)
-// from the existing series object, just overriding one field. Used by the
-// quick "Mark Started/Finished Today" buttons and the inline date editor
-// below, so neither has to duplicate this field list.
-async function quickUpdateSeriesField(field, value) {
+// Applies one or more field overrides to the current series without
+// needing the full Edit modal. Builds the same complete payload
+// seriesUpdate expects from the existing series object, then overrides
+// whatever's in `overrides` — lets a single quick action (like "Mark
+// Finished Today") update two related fields (date_finished + status) in
+// one call instead of two separate round trips.
+async function quickUpdateSeriesFields(overrides) {
   const s = state.currentSeries;
   const d = {
     title: s.title,
@@ -3124,10 +3159,16 @@ async function quickUpdateSeriesField(field, value) {
     is_nsfw: s.is_nsfw,
     standalone_chapter_count: s.standalone_chapter_count,
     fandom: s.fandom,
-    [field]: value,
+    ...overrides,
   };
   await window.api.series.update(s.id, d);
   await loadSeriesData(s.id);
+}
+
+// Thin single-field wrapper — kept so the inline date-edit handler in
+// renderHeroDetailsColumns() doesn't need to change.
+async function quickUpdateSeriesField(field, value) {
+  return quickUpdateSeriesFields({ [field]: value });
 }
 
 // Today's date as YYYY-MM-DD, matching what <input type="date"> stores.
@@ -3135,7 +3176,7 @@ async function quickUpdateSeriesField(field, value) {
 function todayISODate() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
-  return ` ${d.getFullYear()} -${pad(d.getMonth() + 1)} -${pad(d.getDate())} `;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 async function saveStandaloneThoughts() {
@@ -3203,6 +3244,18 @@ async function loadStatuses() {
 function statusColor(name) {
   const s = state.allStatuses.find(st => st.name.toLowerCase() === (name || '').toLowerCase());
   return s ? s.color : 'var(--text-muted)';
+}
+
+// ADD THIS:
+// Picks which of this user's custom statuses to apply when "Mark Finished
+// Today" is clicked. Matches by name pattern (same heuristic approach as
+// isReadingName/isQueuedName in renderStatsHero) since statuses are fully
+// per-user/customizable — falls back to the literal "Finished" if nothing
+// matches, so the update is still predictable even for an account that
+// renamed everything.
+function resolveFinishedStatusName() {
+  const match = state.allStatuses.find(s => /finish|complet|done/i.test(s.name));
+  return match ? match.name : 'Finished';
 }
 
 function renderStatusFilterButtons() {
@@ -3609,6 +3662,62 @@ function addWarning(name) {
   renderWarningChips();
 }
 
+const MAX_FANDOM_LENGTH = 200;
+
+function renderFandomChips() {
+  dom.fandomChips.innerHTML = state.selectedFandoms.map(f => `
+    <div class="tag-chip">
+      ${escapeHTML(f)}
+      <span class="tag-chip-remove" data-name="${escapeHTML(f)}">✕</span>
+    </div>
+  `).join('');
+  dom.fandomChips.querySelectorAll('.tag-chip-remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const name = e.target.dataset.name;
+      state.selectedFandoms = state.selectedFandoms.filter(f => f !== name);
+      renderFandomChips();
+    });
+  });
+}
+
+function handleFandomInput(e) {
+  const val = e.target.value.toLowerCase().trim();
+  const matches = state.allFandoms.filter(f =>
+    (!val || f.toLowerCase().includes(val))
+    && !state.selectedFandoms.some(sf => sf.toLowerCase() === f.toLowerCase())
+  );
+  if (matches.length > 0) {
+    dom.fandomDropdown.innerHTML = matches.map(f => `<div class="tag-option">${escapeHTML(f)}</div>`).join('');
+    dom.fandomDropdown.querySelectorAll('.tag-option').forEach(opt => {
+      opt.addEventListener('click', () => addFandom(opt.textContent));
+    });
+    dom.fandomDropdown.classList.remove('hidden');
+  } else {
+    dom.fandomDropdown.classList.add('hidden');
+  }
+}
+
+function handleFandomKeydown(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const val = e.target.value.trim();
+    if (val) addFandom(val);
+  }
+}
+
+function addFandom(name) {
+  const trimmed = name.slice(0, MAX_FANDOM_LENGTH).trim();
+  if (!trimmed) return;
+  const existing = state.allFandoms.find(f => f.toLowerCase() === trimmed.toLowerCase());
+  const fandomToAdd = existing || trimmed;
+  if (!state.selectedFandoms.some(f => f.toLowerCase() === fandomToAdd.toLowerCase())) {
+    state.selectedFandoms.push(fandomToAdd);
+  }
+  dom.fandomInput.value = '';
+  dom.fandomDropdown.classList.add('hidden');
+  renderFandomChips();
+}
+
 // ─── Book Type (free-text field with a suggestion list) ────────────────────
 // f-s-booktype is a plain <input list="book-type-options">, not a <select>,
 // so a custom value has always been fully typeable and savable — but the
@@ -3629,9 +3738,13 @@ const BOOK_TYPE_SEED_OPTIONS = ['Novel', 'Light Novel', 'Web Novel', 'Graphic No
 async function loadBookTypes() {
   const allOwnSeries = await window.api.series.getAll({});
   state.allBookTypes = [...new Set(allOwnSeries.map(s => (s.book_type || '').trim()).filter(Boolean))];
-  // Same per-user scoping as book types — piggybacks on the same fetch
-  // rather than a second full-library round trip.
-  state.allFandoms = [...new Set(allOwnSeries.map(s => (s.fandom || '').trim()).filter(Boolean))];
+  // Fandom is now a multi-value, comma-delimited field (see
+  // parseFandomList) — split each series's value into individual tokens
+  // before deduping, so autocomplete offers "Harry Potter" and "Naruto"
+  // separately rather than the whole combo string as one suggestion.
+  const fandomSet = new Set();
+  allOwnSeries.forEach(s => parseFandomList(s.fandom).forEach(f => fandomSet.add(f)));
+  state.allFandoms = [...fandomSet];
 }
 
 function renderBookTypeOptions() {
@@ -3641,13 +3754,7 @@ function renderBookTypeOptions() {
   if (datalist) datalist.innerHTML = all.map(t => `<option value="${escapeHTML(t)}">`).join('');
 }
 
-// Same idea as renderBookTypeOptions, for Fandom — no seed list (there's
-// no universal "starter" set the way there is for book types), just
-// whatever this user has already typed across their own titles.
-function renderFandomOptions() {
-  const datalist = el('fandom-options');
-  if (datalist) datalist.innerHTML = state.allFandoms.map(f => `<option value="${escapeHTML(f)}">`).join('');
-}
+
 
 // Fandom only makes sense for Fanfic-type titles — shown/hidden live as
 // the Book Type field changes, same idea as the cover/chapter-count
@@ -3727,8 +3834,10 @@ function openSeriesModal(series = null) {
   el('f-s-rating').value = state.selectedRating;
   renderBookTypeOptions();
   el('f-s-booktype').value = series?.book_type || '';
-  renderFandomOptions();
-  el('f-s-fandom').value = series?.fandom || '';
+  state.selectedFandoms = series ? parseFandomList(series.fandom) : [];
+  renderFandomChips();
+  dom.fandomInput.value = '';
+  dom.fandomDropdown.classList.add('hidden');
   applyFandomFieldVisibility();
   el('f-s-date-started').value = series?.date_started || '';
   el('f-s-date-finished').value = series?.date_finished || '';
@@ -3791,7 +3900,7 @@ async function saveSeries() {
     // Additional details (all optional)
     rating: parseInt(el('f-s-rating').value) || 0,
     book_type: el('f-s-booktype').value.trim(),
-    fandom: el('f-s-booktype').value.trim().toLowerCase() === 'fanfic' ? el('f-s-fandom').value.trim() : null,
+    fandom: el('f-s-booktype').value.trim().toLowerCase() === 'fanfic' ? (state.selectedFandoms.join(', ') || null) : null,
     date_started: el('f-s-date-started').value || null,
     date_finished: el('f-s-date-finished').value || null,
     artist: el('f-s-artist').value.trim(),
@@ -3843,6 +3952,11 @@ async function saveSeries() {
   // in-memory list directly instead.
   if (d.book_type && !state.allBookTypes.includes(d.book_type)) {
     state.allBookTypes.push(d.book_type);
+  }
+  if (d.fandom) {
+    parseFandomList(d.fandom).forEach(f => {
+      if (!state.allFandoms.includes(f)) state.allFandoms.push(f);
+    });
   }
   loadTags();
   loadGenres();

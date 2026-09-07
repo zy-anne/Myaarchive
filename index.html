@@ -680,10 +680,13 @@
 
             <div class="form-row hidden" id="fandom-group">
               <div class="form-group">
-                <label for="f-s-fandom">Fandom</label>
-                <input id="f-s-fandom" type="text" list="fandom-options" placeholder="e.g. Harry Potter, Naruto"
-                  maxlength="200" autocomplete="off">
-                <datalist id="fandom-options"></datalist>
+                <label>Fandom(s)</label>
+                <div class="tag-input-wrap" id="fandom-input-wrap">
+                  <div id="fandom-chips" class="tag-chips"></div>
+                  <input id="f-s-fandom" type="text" placeholder="Type fandom and press Enter…" maxlength="200"
+                    autocomplete="off">
+                </div>
+                <div class="tag-dropdown hidden" id="fandom-dropdown"></div>
               </div>
             </div>
 
