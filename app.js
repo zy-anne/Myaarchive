@@ -2347,12 +2347,13 @@ function renderStatsMonthDetail(year, month) {
   `;
 
   const weeks = computeWeeklyBreakdown(monthEvents, daysInMonth);
+  const maxWeekCount = Math.max(...weeks.map(w => w.count), 1);
   el('stats-weekly-breakdown').innerHTML = `
     <div class="stats-streak-title">Weekly Breakdown</div>
     ${weeks.map((w, i) => `
       <div class="stats-week-row">
         <span class="stats-week-label">Week ${i + 1}</span>
-        <div class="stats-week-track"><div class="stats-week-fill" style="width:${(w.dayCount / 7) * 100}%"></div></div>
+        <div class="stats-week-track"><div class="stats-week-fill" style="width:${w.count ? Math.max((w.count / maxWeekCount) * 100, 4) : 0}%"></div></div>
         <span class="stats-week-count">${w.dayCount}d / ${w.count} book${w.count === 1 ? '' : 's'}</span>
       </div>
     `).join('')}
@@ -2377,7 +2378,7 @@ function renderStatsRadar(allSeries) {
 
   const n = entries.length;
   const max = entries[0][1];
-  const cx = 160, cy = 150, r = 105;
+  const cx = 180, cy = 160, r = 95;
   const angleFor = (i) => (Math.PI * 2 * i) / n - Math.PI / 2;
 
   const rings = [0.25, 0.5, 0.75, 1].map(frac => {
@@ -2407,8 +2408,8 @@ function renderStatsRadar(allSeries) {
 
   const labels = entries.map(([name], i) => {
     const a = angleFor(i);
-    const lx = cx + Math.cos(a) * (r + 28);
-    const ly = cy + Math.sin(a) * (r + 28);
+    const lx = cx + Math.cos(a) * (r + 32);
+    const ly = cy + Math.sin(a) * (r + 32);
     const anchor = Math.cos(a) > 0.3 ? 'start' : (Math.cos(a) < -0.3 ? 'end' : 'middle');
     return `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle" class="stats-radar-label">${escapeHTML(name)}</text>`;
   }).join('');
@@ -3153,7 +3154,7 @@ function renderStatusSelectOptions(selected) {
   if (selected && !names.some(n => n.toLowerCase() === selected.toLowerCase())) {
     names = [selected, ...names];
   }
-  sel.innerHTML = names.map(n => `< option value = "${escapeHTML(n)}" > ${escapeHTML(n)}</option > `).join('');
+  sel.innerHTML = names.map(n => `<option value="${escapeHTML(n)}">${escapeHTML(n)}</option>`).join('');
   sel.value = selected || names[0] || '';
 }
 
@@ -3179,7 +3180,7 @@ function openManageStatusesModal() {
 function renderStatusManageList() {
   const container = el('status-manage-list');
   if (state.allStatuses.length === 0) {
-    container.innerHTML = `< div class="filter-option-empty" > No statuses yet — add one below.</div > `;
+    container.innerHTML = `<div class="filter-option-empty">No statuses yet — add one below.</div>`;
     return;
   }
   container.innerHTML = state.allStatuses.map(s => `
@@ -4060,6 +4061,7 @@ function renderCharacters() {
               </div>
               <div class="char-name">${escapeHTML(c.name)}</div>
               <div class="char-role ${c.role.toLowerCase()}">${escapeHTML(c.role)}</div>
+              ${c.life_status ? `<div class="char-life-status ${lifeStatusClass(c.life_status)}">${escapeHTML(c.life_status)}</div>` : ''}
             </div>
             `).join('');
 
@@ -4098,8 +4100,9 @@ function renderCharactersList() {
               </div>
               <div class="character-list-info">
                 <div class="character-list-name">${escapeHTML(c.name)}</div>
-                <div class="character-list-meta">${c.volume_appearances ? escapeHTML(c.volume_appearances) : noAppearancesText}</div>
+                <div class="character-list-meta">${[c.age ? `Age ${escapeHTML(c.age)}` : '', c.volume_appearances ? escapeHTML(c.volume_appearances) : noAppearancesText].filter(Boolean).join(' · ')}</div>
               </div>
+              ${c.life_status ? `<span class="char-life-status ${lifeStatusClass(c.life_status)}">${escapeHTML(c.life_status)}</span>` : ''}
               <span class="char-role ${c.role.toLowerCase()}">${escapeHTML(c.role)}</span>
             </div>
             `).join('');
@@ -4184,6 +4187,8 @@ function openCharModal(char = null) {
   el('f-c-role').value = char?.role || 'Side';
   el('f-c-vols').value = char?.volume_appearances || '';
   applyCharVolsFieldLabel();
+  el('f-c-age').value = char?.age || '';
+  el('f-c-life-status').value = char?.life_status || '';
   el('f-c-status-role').value = char?.status_role || '';
   el('f-c-overall-vibes').value = char?.overall_vibes || '';
   // If this character only has old-style combined data (no appears_text/
@@ -4240,6 +4245,8 @@ async function saveCharacter() {
     personality: el('f-c-personality').value.trim(),
     notes: el('f-c-notes').value.trim(),
     profile_image_path: el('f-c-img').value || null,
+    age: el('f-c-age').value.trim(),
+    life_status: el('f-c-life-status').value.trim(),
   };
 
   if (!d.name) return toast('Name is required', true);
@@ -4253,6 +4260,19 @@ async function saveCharacter() {
   }
   closeModal('overlay-character');
   loadSeriesData(state.currentSeries.id);
+}
+
+// Maps a free-text life status to a fixed color category for its badge —
+// same "unknown value still gets a sensible color" approach as
+// relCategory() for relationship types above. Anything not recognized
+// (including custom values like "Reincarnated" or a blank field) falls
+// into 'other' rather than guessing.
+function lifeStatusClass(status) {
+  const s = (status || '').trim().toLowerCase();
+  if (s === 'alive') return 'alive';
+  if (s === 'dead' || s === 'deceased') return 'dead';
+  if (s === 'unknown') return 'unknown';
+  return 'other';
 }
 
 async function openCharDrawer(c) {
@@ -4282,20 +4302,26 @@ async function openCharDrawer(c) {
               </div>
 
               <div class="lore-hero-meta">
+                ${(c.age || c.life_status) ? `
+                  <div class="lore-block lore-vitals">
+                    ${c.life_status ? `<span class="char-life-status ${lifeStatusClass(c.life_status)}">${escapeHTML(c.life_status)}</span>` : ''}
+                    ${c.age ? `<span class="lore-age">Age: ${escapeHTML(c.age)}</span>` : ''}
+                  </div>
+                ` : ''}
                 ${statusRoleHtml ? `
-          <div class="lore-block">
-            <div class="lore-label">STATUS &amp; ROLE</div>
-            <div class="lore-status-text">${statusRoleHtml}</div>
-          </div>
-        ` : ''}
+                  <div class="lore-block">
+                    <div class="lore-label">STATUS &amp; ROLE</div>
+                    <div class="lore-status-text">${statusRoleHtml}</div>
+                  </div>
+                ` : ''}
 
                 ${c.overall_vibes ? `
-          <div class="lore-sep"></div>
-          <div class="lore-block">
-            <div class="lore-label">OVERALL VIBES</div>
-            <div class="lore-vibes-quote">“${escapeHTML(c.overall_vibes.replace(/^["“”]|["“”]$/g, ''))}”</div>
-          </div>
-        ` : ''}
+                  <div class="lore-sep"></div>
+                  <div class="lore-block">
+                    <div class="lore-label">OVERALL VIBES</div>
+                    <div class="lore-vibes-quote">“${escapeHTML(c.overall_vibes.replace(/^["“”]|["“”]$/g, ''))}”</div>
+                  </div>
+                ` : ''}
               </div>
             </div>
 

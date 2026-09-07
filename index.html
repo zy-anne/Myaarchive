@@ -522,7 +522,7 @@
           <div class="stats-section stats-section-compact">
             <h3 class="stats-section-title">Reading Profile Radar</h3>
             <div class="stats-radar-card">
-              <svg id="stats-radar-svg" viewBox="0 0 320 300"></svg>
+              <svg id="stats-radar-svg" viewBox="0 0 360 320"></svg>
             </div>
           </div>
 
@@ -938,6 +938,24 @@
             <label for="f-c-vols" id="label-f-c-vols">Volume Appearances</label>
             <input id="f-c-vols" type="text" placeholder="e.g. Vol. 1, 3, 5" maxlength="300">
             <span class="char-counter" id="f-c-vols-counter">0 / 300</span>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group form-group-sm">
+            <label for="f-c-age">Age</label>
+            <input id="f-c-age" type="text" placeholder="e.g. 17, Unknown, 200 (immortal)" maxlength="20"
+              autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="f-c-life-status">Status</label>
+            <input id="f-c-life-status" type="text" list="char-life-status-options" placeholder="e.g. Alive"
+              maxlength="50" autocomplete="off">
+            <datalist id="char-life-status-options">
+              <option value="Alive">
+              <option value="Dead">
+              <option value="Unknown">
+              <option value="Missing">
+            </datalist>
           </div>
         </div>
 

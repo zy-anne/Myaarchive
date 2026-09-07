@@ -1837,6 +1837,42 @@ tbody tr:hover {
   color: var(--role-antagonist);
 }
 
+/* Character life-status badge (Alive/Dead/Unknown/custom) — separate from
+   .char-role (narrative role) since a character's role and whether
+   they're alive are independent facts. Fixed color categories mirror the
+   relationship-type approach (relCategory/lifeStatusClass in app.js):
+   recognized statuses get a dedicated color, anything custom/unrecognized
+   falls back to a muted "other" style so it never looks broken. */
+.char-life-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.char-life-status.alive {
+  color: var(--success);
+}
+
+.char-life-status.dead {
+  color: var(--danger);
+}
+
+.char-life-status.unknown,
+.char-life-status.other {
+  color: var(--text-muted);
+}
+
+.character-card .char-life-status {
+  margin-top: 4px;
+}
+
 /* ── Characters Tab (List View) ──────────────────────────────────────────── */
 .characters-list {
   display: flex;
@@ -2755,6 +2791,19 @@ select option:focus {
 .lore-status-text strong {
   font-weight: 600;
   color: var(--text-main);
+}
+
+.lore-vitals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.lore-age {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .lore-sep {

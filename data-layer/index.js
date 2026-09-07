@@ -498,8 +498,11 @@ async function seriesCopy(db, ownerId, id, targetLibraryId, options = {}) {
         profile_image_path: c.profile_image_path,
         status_role: c.status_role,
         overall_vibes: c.overall_vibes,
-        appears_vs_reality: c.appears_vs_reality,
+        appears_text: c.appears_text,
+        reality_text: c.reality_text,
         personality: c.personality,
+        age: c.age,
+        life_status: c.life_status,
       });
       charIdMap.set(c.id, newCharId);
     }
@@ -587,19 +590,23 @@ async function charactersGet(db, id) { return one(db, `SELECT * FROM characters 
 async function charactersCreate(db, d) {
   const r = await run(db, `
     INSERT INTO characters (series_id, name, role, volume_appearances, notes, profile_image_path,
-                            status_role, overall_vibes, appears_text, reality_text, personality)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            status_role, overall_vibes, appears_text, reality_text, personality,
+                            age, life_status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [d.series_id, d.name, d.role || 'Side', d.volume_appearances || null, d.notes || null, d.profile_image_path || null,
-  d.status_role || null, d.overall_vibes || null, d.appears_text || null, d.reality_text || null, d.personality || null]);
+  d.status_role || null, d.overall_vibes || null, d.appears_text || null, d.reality_text || null, d.personality || null,
+  d.age || null, d.life_status || null]);
   return Number(r.lastInsertRowid);
 }
 async function charactersUpdate(db, id, d) {
   await run(db, `
     UPDATE characters SET name=?, role=?, volume_appearances=?, notes=?, profile_image_path=?,
-      status_role=?, overall_vibes=?, appears_text=?, reality_text=?, personality=?
+      status_role=?, overall_vibes=?, appears_text=?, reality_text=?, personality=?,
+      age=?, life_status=?
     WHERE id=?
   `, [d.name, d.role || 'Side', d.volume_appearances || null, d.notes || null, d.profile_image_path || null,
-  d.status_role || null, d.overall_vibes || null, d.appears_text || null, d.reality_text || null, d.personality || null, id]);
+  d.status_role || null, d.overall_vibes || null, d.appears_text || null, d.reality_text || null, d.personality || null,
+  d.age || null, d.life_status || null, id]);
   return true;
 }
 async function charactersDelete(db, id) { await run(db, `DELETE FROM characters WHERE id = ?`, [id]); return true; }
@@ -1292,6 +1299,8 @@ const CHARACTER_EXTRA_FIELDS = [
   ['appears_text', 'TEXT'],
   ['reality_text', 'TEXT'],
   ['personality', 'TEXT'],
+  ['age', 'TEXT'],
+  ['life_status', 'TEXT'],
 ];
 
 async function ensureCharacterExtraColumns(db) {
