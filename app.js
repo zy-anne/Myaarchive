@@ -1811,6 +1811,7 @@ function uniqueFandomValues(list) {
 // that array, re-filters, and re-renders.
 function renderFilterCheckboxList(containerId, allValues, selected, onToggle) {
   const container = el(containerId);
+  if (!container) return;
   if (allValues.length === 0) {
     container.innerHTML = `<div class="filter-option-empty">None yet</div>`;
     return;
