@@ -2073,20 +2073,19 @@ async function showStats() {
 }
 
 // Every volume across every series this user owns that has a "Date Read"
-// set, plus every standalone title with a "Date Finished" set (standalones
-// have no volumes/chapter_count of their own, so those events carry 0
-// chapters — they still count toward "completed" totals, just not toward
-// chapters-read totals). This is an N+1 fetch (one volumes:getBySeries
-// call per series), same pattern export:json already uses — fine for a
-// personal library, not meant for thousands of titles. Each series is
-// fetched independently so one bad/slow series can't take down the whole
-// stats page.
+// set, plus every standalone title with a "Date Finished" set — each
+// event carries the genres/tags of its parent series, which is what
+// powers the per-month/per-year genre & tag breakdowns further down this
+// file. This is an N+1 fetch (one volumes:getBySeries call per series),
+// same pattern export:json already uses — fine for a personal library,
+// not meant for thousands of titles. Each series is fetched independently
+// so one bad/slow series can't take down the whole stats page.
 async function loadReadingEvents(allSeries) {
   const events = [];
   for (const s of allSeries) {
     if (s.kind === 'standalone') {
       if (s.date_finished) {
-        events.push({ date: s.date_finished, chapters: 0, seriesId: s.id, seriesTitle: s.title, genres: s.genres.map(g => g.name) });
+        events.push({ date: s.date_finished, seriesId: s.id, seriesTitle: s.title, genres: s.genres.map(g => g.name), tags: s.tags.map(t => t.name) });
       }
       continue;
     }
@@ -2094,7 +2093,7 @@ async function loadReadingEvents(allSeries) {
       const vols = await window.api.volumes.getBySeries(s.id);
       vols.forEach(v => {
         if (v.date_read) {
-          events.push({ date: v.date_read, chapters: v.chapter_count || 0, seriesId: s.id, seriesTitle: s.title, genres: s.genres.map(g => g.name) });
+          events.push({ date: v.date_read, seriesId: s.id, seriesTitle: s.title, genres: s.genres.map(g => g.name), tags: s.tags.map(t => t.name) });
         }
       });
     } catch (err) {
@@ -2127,6 +2126,7 @@ async function loadStats() {
     ['genre radar', () => renderStatsRadar(allSeries)],
     ['status breakdown', () => renderStatsStatusBreakdown(allSeries)],
     ['genre breakdown', () => renderStatsGenreBreakdown(allSeries)],
+    ['tag breakdown', () => renderStatsTagBreakdown(allSeries)],
     ['rating distribution', () => renderStatsRatingDistribution(allSeries)],
     ['year chart', () => renderStatsYearChart(allSeries)],
   ];
@@ -2272,15 +2272,16 @@ function renderStatsHero(allSeries, events) {
   // rather than guessing wrong.
   const isReadingName = (name) => /read/i.test(name || '') && !/to.?read|tbr/i.test(name || '');
   const isQueuedName = (name) => /plan|tbr|to.?be.?read|queue/i.test(name || '');
+  const isFinishedName = (name) => /finish|complet|done/i.test(name || '');
   const activeCount = allSeries.filter(s => isReadingName(s.status)).length;
   const queuedCount = allSeries.filter(s => isQueuedName(s.status)).length;
-  const totalChapters = events.reduce((sum, e) => sum + (e.chapters || 0), 0);
+  const finishedCount = allSeries.filter(s => isFinishedName(s.status) || s.date_finished).length;
   const rated = allSeries.filter(s => s.rating > 0);
   const avgRating = rated.length ? rated.reduce((sum, s) => sum + s.rating, 0) / rated.length : 0;
 
   el('stats-quick-active').textContent = activeCount;
   el('stats-quick-queued').textContent = queuedCount;
-  el('stats-quick-chapters').textContent = totalChapters.toLocaleString();
+  el('stats-quick-finished').textContent = finishedCount;
   el('stats-quick-rating').textContent = avgRating ? avgRating.toFixed(1) : '—';
   el('stats-quick-rating-sub').textContent = rated.length ? `Average Rating (${rated.length} rated)` : 'Average Rating';
 }
@@ -2326,16 +2327,55 @@ function renderStatsYearlyMonthlyChart(year) {
   const container = el('stats-yearly-monthly-chart');
   if (counts.every(c => c === 0)) {
     container.innerHTML = `<div class="filter-option-empty">No reading logged for ${year} yet.</div>`;
-    return;
+  } else {
+    const max = Math.max(...counts, 1);
+    container.innerHTML = STATS_MONTH_NAMES.map((m, i) => `
+      <div class="stats-year-col">
+        <span class="stats-year-count">${counts[i] || ''}</span>
+        <div class="stats-year-bar" style="height:${counts[i] ? Math.max((counts[i] / max) * 100, 6) : 2}%"></div>
+        <span class="stats-year-label">${m}</span>
+      </div>
+    `).join('');
   }
-  const max = Math.max(...counts, 1);
-  container.innerHTML = STATS_MONTH_NAMES.map((m, i) => `
-    <div class="stats-year-col">
-      <span class="stats-year-count">${counts[i] || ''}</span>
-      <div class="stats-year-bar" style="height:${counts[i] ? Math.max((counts[i] / max) * 100, 6) : 2}%"></div>
-      <span class="stats-year-label">${m}</span>
-    </div>
-  `).join('');
+  renderStatsYearGenreTagBreakdown(year);
+}
+
+// Genre/tag breakdown scoped to whichever year is selected in the Reading
+// Timeline Distribution controls — same bar-list shape as the all-time
+// Top Genres/Top Tags cells further down the page, just filtered down to
+// events (volume date_read / standalone date_finished) that fall in this
+// specific year.
+function renderStatsYearGenreTagBreakdown(year) {
+  const yearEvents = state.statsEvents.filter(e => new Date(e.date).getFullYear() === year);
+  const genreCounts = {};
+  const genreColors = {};
+  const tagCounts = {};
+  const tagColors = {};
+  const allSeriesById = new Map(state.statsAllSeries.map(s => [s.id, s]));
+
+  yearEvents.forEach(e => {
+    e.genres.forEach(name => { genreCounts[name] = (genreCounts[name] || 0) + 1; });
+    e.tags.forEach(name => { tagCounts[name] = (tagCounts[name] || 0) + 1; });
+    // Colors aren't carried on the event itself (only names) — look them
+    // up from the matching series, same source renderStatsGenreBreakdown
+    // pulls from for the all-time version.
+    const s = allSeriesById.get(e.seriesId);
+    if (!s) return;
+    s.genres.forEach(g => { if (genreCounts[g.name]) genreColors[g.name] = g.color; });
+    s.tags.forEach(t => { if (tagCounts[t.name]) tagColors[t.name] = t.color; });
+  });
+
+  const genreEntries = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const tagEntries = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  renderStatsBarList('stats-year-genre-bars', genreEntries, {
+    emptyMessage: `No genres logged for ${year} yet.`,
+    colorFor: (name) => genreColors[name] || 'var(--accent)',
+  });
+  renderStatsBarList('stats-year-tag-bars', tagEntries, {
+    emptyMessage: `No tags logged for ${year} yet.`,
+    colorFor: (name) => tagColors[name] || 'var(--primary)',
+  });
 }
 
 // All-time (not scoped to the selected year/month) — a streak is
@@ -2393,26 +2433,26 @@ function renderMonthlyInsights(monthEvents) {
     return;
   }
   const byDay = {};
-  const chaptersByDay = {};
   const bySeries = {};
   const byGenre = {};
+  const byTag = {};
   monthEvents.forEach(e => {
     const d = new Date(e.date).getDate();
     byDay[d] = (byDay[d] || 0) + 1;
-    chaptersByDay[d] = (chaptersByDay[d] || 0) + (e.chapters || 0);
     bySeries[e.seriesTitle] = (bySeries[e.seriesTitle] || 0) + 1;
     e.genres.forEach(g => { byGenre[g] = (byGenre[g] || 0) + 1; });
+    e.tags.forEach(t => { byTag[t] = (byTag[t] || 0) + 1; });
   });
   const topDay = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
-  const topChapDay = Object.entries(chaptersByDay).sort((a, b) => b[1] - a[1])[0];
   const topSeries = Object.entries(bySeries).sort((a, b) => b[1] - a[1])[0];
   const topGenre = Object.entries(byGenre).sort((a, b) => b[1] - a[1])[0];
+  const topTag = Object.entries(byTag).sort((a, b) => b[1] - a[1])[0];
 
   const cards = [
     { label: 'Most Active Day', value: topDay ? `Day ${topDay[0]} (${topDay[1]} completed)` : '—' },
-    { label: 'Peak Chapters/Day', value: topChapDay && topChapDay[1] ? `${topChapDay[1]} Ch (Day ${topChapDay[0]})` : '—' },
     { label: 'Most Read Title', value: topSeries ? topSeries[0] : '—' },
     { label: 'Most Read Genre', value: topGenre ? `${topGenre[0]} (${topGenre[1]}x)` : '—' },
+    { label: 'Most Read Tag', value: topTag ? `${topTag[0]} (${topTag[1]}x)` : '—' },
   ];
   el('stats-monthly-insights').innerHTML = cards.map(c => `
     <div class="stats-insight-card">
@@ -2429,18 +2469,16 @@ function renderStatsMonthDetail(year, month) {
   });
   const daysInMonth = new Date(year, month, 0).getDate();
   const completed = monthEvents.length;
-  const chaptersRead = monthEvents.reduce((sum, e) => sum + (e.chapters || 0), 0);
+  const distinctGenres = new Set(monthEvents.flatMap(e => e.genres)).size;
   const activeDaySet = new Set(monthEvents.map(e => new Date(e.date).getDate()));
   const activeDays = activeDaySet.size;
-  const avgChapPerDay = activeDays ? (chaptersRead / activeDays).toFixed(1) : '0.0';
 
   el('stats-month-overview').innerHTML = `
     <div class="stats-month-stat-row">
       <div class="stats-month-stat"><span class="stats-mini-num">${completed}</span><span class="stats-mini-label">Completed</span></div>
-      <div class="stats-month-stat"><span class="stats-mini-num">${chaptersRead}</span><span class="stats-mini-label">Chapters Read</span></div>
+      <div class="stats-month-stat"><span class="stats-mini-num">${distinctGenres}</span><span class="stats-mini-label">Genres Tagged</span></div>
       <div class="stats-month-stat"><span class="stats-mini-num">${activeDays}</span><span class="stats-mini-label">Active Days</span></div>
     </div>
-    <div class="stats-avg-chap"><span class="stats-avg-chap-num">${avgChapPerDay}</span><span class="stats-avg-chap-label">Avg Chap/Day</span></div>
   `;
 
   const streaks = computeReadingStreaks(state.statsEvents);
@@ -2472,6 +2510,41 @@ function renderStatsMonthDetail(year, month) {
 
   renderHeatmapGrid(monthEvents, daysInMonth);
   renderMonthlyInsights(monthEvents);
+  renderStatsMonthGenreTagBreakdown(monthEvents, year, month);
+}
+
+// Genre/tag breakdown scoped to the selected month — same bar-list shape
+// as the yearly and all-time versions, just filtered down to monthEvents
+// (already computed by the caller for the overview/streaks/heatmap above,
+// so this doesn't re-filter state.statsEvents itself).
+function renderStatsMonthGenreTagBreakdown(monthEvents, year, month) {
+  const genreCounts = {};
+  const genreColors = {};
+  const tagCounts = {};
+  const tagColors = {};
+  const allSeriesById = new Map(state.statsAllSeries.map(s => [s.id, s]));
+
+  monthEvents.forEach(e => {
+    e.genres.forEach(name => { genreCounts[name] = (genreCounts[name] || 0) + 1; });
+    e.tags.forEach(name => { tagCounts[name] = (tagCounts[name] || 0) + 1; });
+    const s = allSeriesById.get(e.seriesId);
+    if (!s) return;
+    s.genres.forEach(g => { if (genreCounts[g.name]) genreColors[g.name] = g.color; });
+    s.tags.forEach(t => { if (tagCounts[t.name]) tagColors[t.name] = t.color; });
+  });
+
+  const monthLabel = STATS_MONTH_NAMES[month - 1];
+  const genreEntries = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const tagEntries = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  renderStatsBarList('stats-month-genre-bars', genreEntries, {
+    emptyMessage: `No genres logged for ${monthLabel} ${year} yet.`,
+    colorFor: (name) => genreColors[name] || 'var(--accent)',
+  });
+  renderStatsBarList('stats-month-tag-bars', tagEntries, {
+    emptyMessage: `No tags logged for ${monthLabel} ${year} yet.`,
+    colorFor: (name) => tagColors[name] || 'var(--primary)',
+  });
 }
 
 // ── Reading Profile Radar (genre "DNA") ──────────────────────────────────
@@ -2570,6 +2643,22 @@ function renderStatsGenreBreakdown(list) {
   renderStatsBarList('stats-genre-bars', entries, {
     emptyMessage: 'No genres tagged yet',
     colorFor: (name) => colors[name] || 'var(--accent)',
+  });
+}
+
+// All-time Top Tags — same shape as renderStatsGenreBreakdown, backed by
+// each title's per-user tags instead of the shared genres list.
+function renderStatsTagBreakdown(list) {
+  const counts = {};
+  const colors = {};
+  list.forEach(s => s.tags.forEach(t => {
+    counts[t.name] = (counts[t.name] || 0) + 1;
+    colors[t.name] = t.color;
+  }));
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  renderStatsBarList('stats-tag-bars', entries, {
+    emptyMessage: 'No tags added yet',
+    colorFor: (name) => colors[name] || 'var(--primary)',
   });
 }
 

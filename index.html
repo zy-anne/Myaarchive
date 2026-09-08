@@ -463,10 +463,10 @@
                 <div class="stat-card-sub">To Be Read (TBR)</div>
               </div>
               <div class="stat-card stat-card-sm">
-                <div class="stat-card-icon">📑</div>
-                <div class="stat-card-label">Chapters</div>
-                <div class="stat-card-value" id="stats-quick-chapters">0</div>
-                <div class="stat-card-sub">Total Chapters Logged</div>
+                <div class="stat-card-icon">✅</div>
+                <div class="stat-card-label">Finished</div>
+                <div class="stat-card-value" id="stats-quick-finished">0</div>
+                <div class="stat-card-sub">Total Titles Finished</div>
               </div>
               <div class="stat-card stat-card-sm">
                 <div class="stat-card-icon">★</div>
@@ -489,6 +489,16 @@
 
             <div id="stats-yearly-panel">
               <div class="stats-year-chart" id="stats-yearly-monthly-chart"></div>
+              <div class="stats-compact-grid stats-yearly-genre-tag-grid">
+                <div class="stats-section stats-section-compact stats-compact-cell">
+                  <h3 class="stats-section-title">Top Genres This Year</h3>
+                  <div class="stats-bar-list" id="stats-year-genre-bars"></div>
+                </div>
+                <div class="stats-section stats-section-compact stats-compact-cell">
+                  <h3 class="stats-section-title">Top Tags This Year</h3>
+                  <div class="stats-bar-list" id="stats-year-tag-bars"></div>
+                </div>
+              </div>
             </div>
 
             <div id="stats-month-panel" class="hidden">
@@ -515,6 +525,16 @@
                   <div class="stats-monthly-insights" id="stats-monthly-insights"></div>
                 </div>
               </div>
+              <div class="stats-compact-grid stats-month-genre-tag-grid">
+                <div class="stats-section stats-section-compact stats-compact-cell">
+                  <h3 class="stats-section-title">Top Genres This Month</h3>
+                  <div class="stats-bar-list" id="stats-month-genre-bars"></div>
+                </div>
+                <div class="stats-section stats-section-compact stats-compact-cell">
+                  <h3 class="stats-section-title">Top Tags This Month</h3>
+                  <div class="stats-bar-list" id="stats-month-tag-bars"></div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -537,6 +557,11 @@
             <div class="stats-section stats-section-compact stats-compact-cell">
               <h3 class="stats-section-title">Top Genres</h3>
               <div class="stats-bar-list" id="stats-genre-bars"></div>
+            </div>
+
+            <div class="stats-section stats-section-compact stats-compact-cell">
+              <h3 class="stats-section-title">Top Tags</h3>
+              <div class="stats-bar-list" id="stats-tag-bars"></div>
             </div>
 
             <div class="stats-section stats-section-compact stats-compact-cell">

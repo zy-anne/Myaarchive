@@ -4497,6 +4497,16 @@ a,
   gap: var(--sp-4);
 }
 
+/* Genre/Tag breakdown grids nested inside Reading Timeline Distribution
+   (scoped to the selected year, or the selected month) — same
+   compact-cell shape as the all-time Book Status/Top Genres/Top Tags/
+   Rating Distribution row, just spaced below whichever chart/panel
+   they're paired with rather than sitting flush against it. */
+.stats-yearly-genre-tag-grid,
+.stats-month-genre-tag-grid {
+  margin-top: var(--sp-4);
+}
+
 .stats-compact-cell {
   background: var(--surface);
   border: 1px solid var(--border);
