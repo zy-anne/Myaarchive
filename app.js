@@ -3037,7 +3037,7 @@ function renderSeriesHero(s) {
   `;
 
   el('btn-mark-started')?.addEventListener('click', async () => {
-    await quickUpdateSeriesField('date_started', todayISODate());
+    await quickUpdateSeriesFields({ date_started: todayISODate(), status: resolveReadingStatusName() });
     toast('Marked as started today');
   });
   el('btn-mark-finished')?.addEventListener('click', async () => {
@@ -3336,16 +3336,14 @@ function statusColor(name) {
   return s ? s.color : 'var(--text-muted)';
 }
 
-// ADD THIS:
-// Picks which of this user's custom statuses to apply when "Mark Finished
-// Today" is clicked. Matches by name pattern (same heuristic approach as
-// isReadingName/isQueuedName in renderStatsHero) since statuses are fully
-// per-user/customizable — falls back to the literal "Finished" if nothing
-// matches, so the update is still predictable even for an account that
-// renamed everything.
 function resolveFinishedStatusName() {
   const match = state.allStatuses.find(s => /finish|complet|done/i.test(s.name));
   return match ? match.name : 'Finished';
+}
+
+function resolveReadingStatusName() {
+  const match = state.allStatuses.find(s => /read/i.test(s.name) && !/to.?read|tbr/i.test(s.name));
+  return match ? match.name : 'Reading';
 }
 
 function renderStatusFilterButtons() {
