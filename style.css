@@ -3211,10 +3211,21 @@ select option:focus {
   min-width: 0;
 }
 
+/* Wraps the char counter + "Add to Timeline" button as a stacked,
+   right-aligned pair sitting under the note textarea — counter on top so
+   it reads as "here's how much room you have left, now here's the
+   button" rather than the old bottom-left ghost button + far-right
+   counter that had no visual relationship to each other. */
+.timeline-input-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  margin-top: var(--sp-2);
+}
+
 .timeline-add-btn {
-  margin: 0 0 var(--sp-2) 26px;
-  /* lines up under the textarea, past the dot column */
-  align-self: flex-start;
+  align-self: flex-end;
 }
 
 .timeline-input-empty {
