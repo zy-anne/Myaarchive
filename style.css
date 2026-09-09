@@ -475,6 +475,18 @@ a:focus-visible,
   flex: 1;
 }
 
+/* Drag-to-reorder feedback for sidebar categories — same visual language
+   as .gallery-card's dragging/drag-over-target (see Gallery Tab section
+   further down), just applied to nav-item-wrap rows instead. */
+.nav-item-wrap.dragging {
+  opacity: 0.4;
+}
+
+.nav-item-wrap.drag-over-target {
+  box-shadow: 0 0 0 2px var(--primary);
+  border-radius: var(--radius-sm);
+}
+
 .nav-customize-btn {
   position: absolute;
   right: 6px;

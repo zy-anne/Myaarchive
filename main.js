@@ -387,7 +387,7 @@ handle('libraries:getAll', () => dataLayer.libraries.getAll(db, requireUser()));
 handle('libraries:create', (_, d) => dataLayer.libraries.create(db, requireUser(), d));
 handle('libraries:update', (_, id, d) => dataLayer.libraries.update(db, id, d));
 handle('libraries:delete', (_, id) => dataLayer.libraries.delete(db, id));
-
+handle('libraries:reorder', (_, orderedIds) => dataLayer.libraries.reorder(db, requireUser(), orderedIds));
 // ─── IPC: Tags (per-user) / Genres (shared) / Content Warnings (per-user) ──
 handle('tags:getAll', () => dataLayer.tags.getAll(db, requireUser()));
 handle('tags:create', (_, name) => dataLayer.tags.create(db, requireUser(), name));

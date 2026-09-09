@@ -369,7 +369,7 @@ async function loadLibraries() {
 
 function renderSidebarNav() {
   dom.sidebarNavList.innerHTML = state.libraries.map(lib => `
-    <div class="nav-item-wrap">
+    <div class="nav-item-wrap" draggable="true" data-lib-id="${lib.id}">
       <button class="nav-item ${lib.id === state.currentLibraryId ? 'active' : ''}" data-lib-id="${lib.id}">
         <span class="nav-item-icon">${lib.icon === 'custom' && lib.icon_image
       ? `<img class="nav-icon-img" data-key="${escapeHTML(lib.icon_image)}" alt="">`
@@ -392,6 +392,52 @@ function renderSidebarNav() {
       if (lib) openCustomizeModal(lib);
     });
   });
+  dom.sidebarNavList.querySelectorAll('.nav-item-wrap').forEach(setupCategoryReorderDrag);
+}
+
+// Internal drag-to-reorder for sidebar categories — same pattern as
+// setupGalleryReorderDrag (Gallery tab), scoped to the whole
+// .nav-item-wrap row (icon + name button + pencil) so there's a generous
+// drag target without needing a dedicated drag-handle icon. The nested
+// buttons keep working normally (a plain click never triggers a drag).
+function setupCategoryReorderDrag(wrap) {
+  wrap.addEventListener('dragstart', (e) => {
+    e.dataTransfer.setData('text/library-id', wrap.dataset.libId);
+    e.dataTransfer.effectAllowed = 'move';
+    wrap.classList.add('dragging');
+  });
+  wrap.addEventListener('dragend', () => wrap.classList.remove('dragging'));
+  wrap.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer.types.includes('text/library-id')) return;
+    e.preventDefault();
+    wrap.classList.add('drag-over-target');
+  });
+  wrap.addEventListener('dragleave', () => wrap.classList.remove('drag-over-target'));
+  wrap.addEventListener('drop', async (e) => {
+    if (!e.dataTransfer.types.includes('text/library-id')) return;
+    e.preventDefault();
+    wrap.classList.remove('drag-over-target');
+    const draggedId = parseInt(e.dataTransfer.getData('text/library-id'));
+    const targetId = parseInt(wrap.dataset.libId);
+    if (draggedId === targetId) return;
+    await reorderCategories(draggedId, targetId);
+  });
+}
+
+async function reorderCategories(draggedId, targetId) {
+  const ids = state.libraries.map(l => l.id);
+  const fromIdx = ids.indexOf(draggedId);
+  const toIdx = ids.indexOf(targetId);
+  if (fromIdx === -1 || toIdx === -1) return;
+  ids.splice(toIdx, 0, ids.splice(fromIdx, 1)[0]);
+
+  // Reorder in-memory first so the sidebar updates instantly, then
+  // persist — same "optimistic update, then IPC" pattern as
+  // reorderGalleryImages.
+  const byId = Object.fromEntries(state.libraries.map(l => [l.id, l]));
+  state.libraries = ids.map(id => byId[id]);
+  renderSidebarNav();
+  await window.api.libraries.reorder(ids);
 }
 
 function applyCurrentLibraryHeader() {
@@ -642,13 +688,6 @@ function applySidebarAutoHide() {
     el('sidebar')?.classList.remove('sidebar-visible');
     el('sidebar-backdrop')?.classList.remove('active');
   }
-}
-
-async function setSidebarAutoHide(enabled) {
-  state.autoHideSidebar = !!enabled;
-  applySidebarAutoHide();
-  await window.api.settings.set('autoHideSidebar', state.autoHideSidebar ? 'true' : 'false');
-  toast(state.autoHideSidebar ? 'Auto-hide categories enabled' : 'Auto-hide categories disabled');
 }
 
 async function setSidebarAutoHide(enabled) {
@@ -971,6 +1010,10 @@ function bindEvents() {
 
   el('setting-show-nsfw')?.addEventListener('change', (e) => {
     setShowNsfwContent(e.target.checked);
+  });
+
+  el('setting-autohide-sidebar')?.addEventListener('change', (e) => {
+    setSidebarAutoHide(e.target.checked);
   });
 
   document.querySelectorAll('#settings-theme-chips .type-chip').forEach(chip => {

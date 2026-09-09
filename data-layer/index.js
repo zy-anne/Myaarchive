@@ -85,8 +85,28 @@ async function librariesUpdate(db, id, d) {
 }
 
 async function librariesDelete(db, id) {
-  await run(db, `DELETE FROM libraries WHERE id = ?`, [id]);
+  await run(db, `DELETE FROM libraries WHERE id = ? `, [id]);
   return true;
+}
+
+// Persists a new sidebar order after a drag-and-drop reorder. Scoped to
+// ownerId in the WHERE clause (not just trusting the id list) so a
+// tampered/replayed call can never touch another account's categories.
+async function librariesReorder(db, ownerId, orderedIds) {
+  const tx = await db.transaction('write');
+  try {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await tx.execute({
+        sql: `UPDATE libraries SET position = ? WHERE id = ? AND owner_id = ?`,
+        args: [i, orderedIds[i], ownerId],
+      });
+    }
+    await tx.commit();
+    return true;
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  }
 }
 
 // ─── Tag colors ─────────────────────────────────────────────────────────
@@ -1458,8 +1478,7 @@ module.exports = {
   ensureVolumesExtraColumns,
   ensureCharacterExtraColumns,
   ensureIndexes,
-  libraries: { getAll: librariesGetAll, create: librariesCreate, update: librariesUpdate, delete: librariesDelete },
-  tags: { getAll: tagsGetAll, create: tagsCreate },
+  libraries: { getAll: librariesGetAll, create: librariesCreate, update: librariesUpdate, delete: librariesDelete, reorder: librariesReorder }, tags: { getAll: tagsGetAll, create: tagsCreate },
   genres: { getAll: genresGetAll },
   contentWarnings: { getAll: contentWarningsGetAll, create: contentWarningsCreate },
   statuses: { getAll: statusesGetAll, create: statusesCreate, update: statusesUpdate, delete: statusesDelete },

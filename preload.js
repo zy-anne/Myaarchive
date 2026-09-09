@@ -89,6 +89,7 @@ contextBridge.exposeInMainWorld('api', {
     create: (d) => invoke('libraries:create', d),
     update: (id, d) => invoke('libraries:update', id, d),
     delete: (id) => invoke('libraries:delete', id),
+    reorder: (orderedIds) => invoke('libraries:reorder', orderedIds),
   },
   gallery: {
     getBySeries: (sid) => invoke('gallery:getBySeries', sid),
