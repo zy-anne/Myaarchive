@@ -1928,7 +1928,7 @@ function renderSeriesTable() {
         <div class="series-title-cell">
           ${s.is_nsfw ? `<span class="nsfw-marker" title="NSFW"></span>` : ''}
           <span class="title-text">${escapeHTML(s.title)}</span>
-          ${s.kind === 'standalone' ? `<span class="kind-badge">STANDALONE</span>` : ''}
+          ${s.kind === 'series' ? `<span class="kind-badge">SERIES</span>` : ''}
           ${s.book_type ? `<span class="book-type-badge">${escapeHTML(s.book_type).toUpperCase()}</span>` : ''}
         </div>
       </td>
@@ -1976,9 +1976,9 @@ function renderSeriesCards() {
   grid.innerHTML = state.series.map(s => `
     <div class="series-card" data-id="${s.id}">
       <div class="series-card-cover">
-        ${(s.kind === 'standalone' || s.book_type) ? `
+        ${(s.kind === 'series' || s.book_type) ? `
         <div class="series-card-badges-overlay">
-          ${s.kind === 'standalone' ? `<span class="kind-badge kind-badge-overlay">Standalone</span>` : ''}
+          ${s.kind === 'series' ? `<span class="kind-badge kind-badge-overlay">Series</span>` : ''}
           ${s.book_type ? `<span class="book-type-badge book-type-badge-overlay">${escapeHTML(s.book_type)}</span>` : ''}
         </div>` : ''}
         ${s.is_nsfw ? `<span class="series-card-nsfw-badge" title="NSFW">NSFW</span>` : ''}
@@ -3026,7 +3026,7 @@ function renderSeriesHero(s) {
       <div class="hero-header-details">
         <div class="hero-status-row">
           <span class="status-badge" style="color:${statusColor(s.status)}">${escapeHTML(s.status)}</span>
-          ${s.kind === 'standalone' ? `<span class="kind-badge">Standalone</span>` : ''}
+          ${s.kind === 'series' ? `<span class="kind-badge">Series</span>` : ''}
           ${!s.date_started ? `<button type="button" class="btn btn-ghost btn-sm hero-quick-date-btn" id="btn-mark-started">+ Mark Started Today</button>` : ''}
           ${!s.date_finished ? `<button type="button" class="btn btn-ghost btn-sm hero-quick-date-btn" id="btn-mark-finished">+ Mark Finished Today</button>` : ''}
         </div>
@@ -3877,7 +3877,7 @@ function openSeriesModal(series = null) {
   renderStatusSelectOptions(series?.status);
   el('f-s-synopsis').value = series?.synopsis || '';
 
-  const kind = series?.kind || 'series';
+  const kind = series?.kind || 'standalone';
   el('f-s-kind').value = kind;
   document.querySelectorAll('#f-s-kind-chips .type-chip').forEach(chip => {
     chip.classList.toggle('active', chip.dataset.kind === kind);
