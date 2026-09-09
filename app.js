@@ -3482,9 +3482,15 @@ async function saveStatusEdit(id) {
     && prevStatus && el('f-s-status').value === prevStatus.name;
 
   try {
+    const filterAffected = prevStatus && state.filterStatus === prevStatus.name && name !== prevStatus.name;
+
     await window.api.statuses.update(id, { name, color });
     await loadStatuses();
     renderStatusManageList();
+    if (filterAffected) {
+      state.filterStatus = 'All';
+      updateFilterBadges();
+    }
     renderStatusFilterButtons();
     refreshSeriesStatusSelectIfOpen(wasSelectedInForm ? name : undefined);
     toast('Status updated');
@@ -3504,8 +3510,13 @@ async function deleteStatus(id) {
       await window.api.statuses.delete(id);
       await loadStatuses();
       renderStatusManageList();
+      if (state.filterStatus === s.name) {
+        state.filterStatus = 'All';
+        updateFilterBadges();
+      }
       renderStatusFilterButtons();
       toast('Status deleted');
+      if (el('view-library').classList.contains('active')) loadLibrary();
     } catch (e) {
       toast(e.message || 'Could not delete status', true);
     }
