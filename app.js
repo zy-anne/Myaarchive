@@ -2885,22 +2885,15 @@ function renderSeriesGroupsSection() {
   });
 }
 
-// Populates the "add a title to this group" dropdown from the current
-// library's titles, excluding whatever's already sitting in
-// state.groupItems — so the same title can't be added twice and the list
-// shrinks as items are added.
 function populateGroupAddBookSelect() {
   const select = el('f-g-add-book-select');
   const usedIds = new Set(state.groupItems.map(i => i.series_id));
-  const available = state.allSeriesRaw.filter(s => !usedIds.has(s.id));
+
+  const available = state.allSeriesRaw.filter(s => !usedIds.has(s.id) && s.library_id === state.currentLibraryId);
   select.innerHTML = `<option value="">-- Select a title to add --</option>` +
     available.map(s => `<option value="${s.id}">${escapeHTML(s.title)}</option>`).join('');
 }
 
-// Renders the working item list inside the group modal (title + role
-// picker + remove button per row). Operates on state.groupItems directly
-// so edits (role changes, removals) are reflected immediately without a
-// round trip — the whole list is only sent to the backend on Save.
 function renderGroupItemsList() {
   const list = el('group-items-list');
   const empty = el('empty-group-items');
