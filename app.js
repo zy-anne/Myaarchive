@@ -5365,6 +5365,15 @@ async function showGraph() {
     // than filling the modal completely edge-to-edge.
     state.graphNetwork.moveTo({ scale: state.graphNetwork.getScale() * 0.85 });
     graphMinScale = state.graphNetwork.getScale() * ZOOM_OUT_LIMIT_FACTOR;
+
+    // Physics has done its job — it found a readable initial layout. Turn
+    // it off entirely from here on so springLength/springConstant/
+    // avoidOverlap stop actively pulling nodes back toward "ideal"
+    // spacing. With physics off, dragging a node is pure freeform
+    // placement: it goes exactly where it's dropped and stays there, with
+    // nothing snapping it back or nudging its neighbors — full manual
+    // control over layout instead of fighting the solver on every drag.
+    state.graphNetwork.setOptions({ physics: { enabled: false } });
   });
 
   state.graphNetwork.on('zoom', (params) => {
