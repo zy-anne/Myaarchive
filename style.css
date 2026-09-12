@@ -2457,6 +2457,7 @@ select option:focus {
 
 /* Tags Input */
 .tag-input-wrap {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
@@ -4116,6 +4117,7 @@ body.sidebar-autohide .sidebar-backdrop.active {
 
 #setting-annual-goal {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .settings-row .settings-select-input {

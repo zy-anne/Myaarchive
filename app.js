@@ -1526,6 +1526,7 @@ function bindEvents() {
     closeModal('overlay-rel-detail');
     openRelModal(state.currentRelationship);
   });
+
   el('btn-rel-detail-delete').addEventListener('click', () => {
     const rel = state.currentRelationship;
     if (!rel) return;
