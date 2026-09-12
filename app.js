@@ -5154,6 +5154,12 @@ function renderDrawerRels() {
       });
     });
   });
+  dom.drawerRels.querySelectorAll('.rel-list-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const rel = state.relationships.find(r => r.id == item.dataset.id);
+      if (rel) openRelDetailModal(rel);
+    });
+  });
 }
 
 // ─── Relationship Detail (view-only) ───────────────────────────────────

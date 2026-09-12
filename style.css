@@ -3021,6 +3021,20 @@ select option:focus {
   margin-bottom: var(--sp-2);
 }
 
+.rel-list-item {
+  background: var(--bg-color);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-2);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.rel-list-item:hover {
+  border-color: var(--primary);
+}
+
 .rel-list-header {
   display: flex;
   justify-content: space-between;
