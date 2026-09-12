@@ -1598,188 +1598,198 @@
         </div>
       </div>
     </div>
+  </div>
+  <!-- ▲▲▲ FIX: the closing </div> immediately above this comment was
+       MISSING in the previous version of this file. Without it, every
+       modal below (Change Password, Security Question, Delete Account,
+       Series Group, Confirm Dialog, the Lightbox, and even the Toast)
+       ended up nested INSIDE #overlay-user-settings in the actual DOM.
+       Since that element starts with class="hidden" (display:none), all
+       of its descendants were hidden too, regardless of their own class —
+       which is exactly why "New Group"/"Edit" on a Series Group silently
+       did nothing with no console error. This one line fixes all of it. -->
 
-    <!-- Change Password Modal -->
-    <div class="overlay hidden" id="overlay-change-password">
-      <div class="modal modal-sm" id="modal-change-password">
-        <div class="modal-header">
-          <h2>Change Password</h2>
-          <button class="close-btn" data-close="overlay-change-password">✕</button>
+  <!-- Change Password Modal -->
+  <div class="overlay hidden" id="overlay-change-password">
+    <div class="modal modal-sm" id="modal-change-password">
+      <div class="modal-header">
+        <h2>Change Password</h2>
+        <button class="close-btn" data-close="overlay-change-password">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="f-change-password-current">Current Password</label>
+          <input id="f-change-password-current" type="password" autocomplete="current-password">
         </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="f-change-password-current">Current Password</label>
-            <input id="f-change-password-current" type="password" autocomplete="current-password">
-          </div>
-          <div class="form-group">
-            <label for="f-change-password-new">New Password</label>
-            <input id="f-change-password-new" type="password" autocomplete="new-password" maxlength="200">
-          </div>
-          <div class="form-group">
-            <label for="f-change-password-confirm">Confirm New Password</label>
-            <input id="f-change-password-confirm" type="password" autocomplete="new-password" maxlength="200">
-          </div>
-          <p class="form-hint" id="change-password-error"></p>
+        <div class="form-group">
+          <label for="f-change-password-new">New Password</label>
+          <input id="f-change-password-new" type="password" autocomplete="new-password" maxlength="200">
         </div>
-        <div class="modal-footer">
-          <button class="btn btn-ghost" data-close="overlay-change-password">Cancel</button>
-          <button class="btn btn-primary" id="btn-confirm-change-password" disabled>Update Password</button>
+        <div class="form-group">
+          <label for="f-change-password-confirm">Confirm New Password</label>
+          <input id="f-change-password-confirm" type="password" autocomplete="new-password" maxlength="200">
         </div>
+        <p class="form-hint" id="change-password-error"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-change-password">Cancel</button>
+        <button class="btn btn-primary" id="btn-confirm-change-password" disabled>Update Password</button>
       </div>
     </div>
+  </div>
 
-    <!-- Security Question Modal -->
-    <div class="overlay hidden" id="overlay-security-question">
-      <div class="modal modal-sm" id="modal-security-question">
-        <div class="modal-header">
-          <h2>Security Question</h2>
-          <button class="close-btn" data-close="overlay-security-question">✕</button>
+  <!-- Security Question Modal -->
+  <div class="overlay hidden" id="overlay-security-question">
+    <div class="modal modal-sm" id="modal-security-question">
+      <div class="modal-header">
+        <h2>Security Question</h2>
+        <button class="close-btn" data-close="overlay-security-question">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="form-hint">Used to reset your password if you forget it. Choose an answer only you would know.</p>
+        <div class="form-group">
+          <label for="f-security-question">Question</label>
+          <input id="f-security-question" type="text" placeholder="e.g. What was your first pet's name?" maxlength="200"
+            autocomplete="off">
         </div>
-        <div class="modal-body">
-          <p class="form-hint">Used to reset your password if you forget it. Choose an answer only you would know.</p>
-          <div class="form-group">
-            <label for="f-security-question">Question</label>
-            <input id="f-security-question" type="text" placeholder="e.g. What was your first pet's name?"
-              maxlength="200" autocomplete="off">
-          </div>
-          <div class="form-group">
-            <label for="f-security-answer">Answer</label>
-            <input id="f-security-answer" type="text" maxlength="200" autocomplete="off">
-          </div>
-          <div class="form-group">
-            <label for="f-security-current-password">Current Password</label>
-            <input id="f-security-current-password" type="password" autocomplete="current-password">
-          </div>
-          <p class="form-hint" id="security-question-error"></p>
+        <div class="form-group">
+          <label for="f-security-answer">Answer</label>
+          <input id="f-security-answer" type="text" maxlength="200" autocomplete="off">
         </div>
-        <div class="modal-footer">
-          <button class="btn btn-ghost" data-close="overlay-security-question">Cancel</button>
-          <button class="btn btn-primary" id="btn-confirm-security-question">Save</button>
+        <div class="form-group">
+          <label for="f-security-current-password">Current Password</label>
+          <input id="f-security-current-password" type="password" autocomplete="current-password">
         </div>
+        <p class="form-hint" id="security-question-error"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-security-question">Cancel</button>
+        <button class="btn btn-primary" id="btn-confirm-security-question">Save</button>
       </div>
     </div>
+  </div>
 
-    <!-- Delete Account Modal (typed confirmation + password) -->
-    <div class="overlay hidden" id="overlay-delete-account">
-      <div class="modal modal-sm" id="modal-delete-account">
-        <div class="modal-header">
-          <h2>Delete Account</h2>
-          <button class="close-btn" data-close="overlay-delete-account">✕</button>
+  <!-- Delete Account Modal (typed confirmation + password) -->
+  <div class="overlay hidden" id="overlay-delete-account">
+    <div class="modal modal-sm" id="modal-delete-account">
+      <div class="modal-header">
+        <h2>Delete Account</h2>
+        <button class="close-btn" data-close="overlay-delete-account">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="form-hint delete-account-warning">
+          This permanently deletes <strong id="delete-account-username">your account</strong> and every category,
+          title, volume, character, relationship, picture, and file attached to it. There is no undo, and no way for
+          anyone — including the app's owner — to recover it afterward.
+        </p>
+        <div class="form-group">
+          <label for="f-delete-account-confirm">Type your username to confirm</label>
+          <input id="f-delete-account-confirm" type="text" autocomplete="off" spellcheck="false">
         </div>
-        <div class="modal-body">
-          <p class="form-hint delete-account-warning">
-            This permanently deletes <strong id="delete-account-username">your account</strong> and every category,
-            title, volume, character, relationship, picture, and file attached to it. There is no undo, and no way for
-            anyone — including the app's owner — to recover it afterward.
-          </p>
-          <div class="form-group">
-            <label for="f-delete-account-confirm">Type your username to confirm</label>
-            <input id="f-delete-account-confirm" type="text" autocomplete="off" spellcheck="false">
-          </div>
-          <div class="form-group">
-            <label for="f-delete-account-password">Password</label>
-            <input id="f-delete-account-password" type="password" autocomplete="current-password">
-          </div>
-          <p class="form-hint" id="delete-account-error"></p>
+        <div class="form-group">
+          <label for="f-delete-account-password">Password</label>
+          <input id="f-delete-account-password" type="password" autocomplete="current-password">
         </div>
-        <div class="modal-footer">
-          <button class="btn btn-ghost" data-close="overlay-delete-account">Cancel</button>
-          <button class="btn btn-danger" id="btn-confirm-delete-account" disabled>Permanently Delete Account</button>
-        </div>
+        <p class="form-hint" id="delete-account-error"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-delete-account">Cancel</button>
+        <button class="btn btn-danger" id="btn-confirm-delete-account" disabled>Permanently Delete Account</button>
       </div>
     </div>
+  </div>
 
-    <!-- Series Group (Franchise / Shared Universe) Form -->
-    <div class="overlay hidden" id="overlay-series-group">
-      <div class="modal modal-lg" id="modal-series-group">
-        <div class="modal-header">
-          <h2 id="modal-group-title">New Series Group / Universe</h2>
-          <button class="close-btn" data-close="overlay-series-group">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-row">
-            <div class="form-group" style="flex: 2;">
-              <label for="f-g-name">Group / Universe Name <span class="req">*</span></label>
-              <input id="f-g-name" type="text" placeholder="e.g. The Folk of the Air Universe, Six of Crows Duology…"
-                maxlength="300" required>
-            </div>
-            <div class="form-group" style="flex: 1;">
-              <label for="f-g-type">Group Type</label>
-              <select id="f-g-type">
-                <option value="Series Group" selected>Series Group</option>
-                <option value="Shared Universe">Shared Universe</option>
-                <option value="Duology">Duology</option>
-                <option value="Trilogy">Trilogy</option>
-                <option value="Franchise">Franchise</option>
-                <option value="Anthology">Anthology</option>
-              </select>
-            </div>
+  <!-- Series Group (Franchise / Shared Universe) Form -->
+  <div class="overlay hidden" id="overlay-series-group">
+    <div class="modal modal-lg" id="modal-series-group">
+      <div class="modal-header">
+        <h2 id="modal-group-title">New Series Group / Universe</h2>
+        <button class="close-btn" data-close="overlay-series-group">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group" style="flex: 2;">
+            <label for="f-g-name">Group / Universe Name <span class="req">*</span></label>
+            <input id="f-g-name" type="text" placeholder="e.g. The Folk of the Air Universe, Six of Crows Duology…"
+              maxlength="300" required>
           </div>
-
-          <div class="form-group">
-            <label for="f-g-desc">Description / Universe Notes <span class="optional">(optional)</span></label>
-            <textarea id="f-g-desc" rows="2"
-              placeholder="Overall premise, chronological reading order, connection between novels…"></textarea>
-          </div>
-
-          <!-- Sub-Books Selection Section -->
-          <div class="group-books-manager">
-            <div class="group-books-manager-header">
-              <label>Sub-Books in this Group / Universe</label>
-              <span class="form-hint">Add novels, novellas, or side stories from your library</span>
-            </div>
-
-            <div class="group-add-book-row">
-              <select id="f-g-add-book-select">
-                <option value="">-- Select a title to add --</option>
-              </select>
-              <button type="button" class="btn btn-ghost btn-sm" id="btn-group-add-book">+ Add to Group</button>
-            </div>
-
-            <div class="group-items-list" id="group-items-list">
-              <div class="empty-group-items" id="empty-group-items">No books added yet. Select a title above to link it
-                to
-                this group.</div>
-            </div>
+          <div class="form-group" style="flex: 1;">
+            <label for="f-g-type">Group Type</label>
+            <select id="f-g-type">
+              <option value="Series Group" selected>Series Group</option>
+              <option value="Shared Universe">Shared Universe</option>
+              <option value="Duology">Duology</option>
+              <option value="Trilogy">Trilogy</option>
+              <option value="Franchise">Franchise</option>
+              <option value="Anthology">Anthology</option>
+            </select>
           </div>
         </div>
-        <div class="modal-footer">
-          <button class="btn btn-danger-ghost btn-sm hidden" id="btn-delete-group">Delete Group</button>
-          <button class="btn btn-ghost" data-close="overlay-series-group">Cancel</button>
-          <button class="btn btn-primary" id="btn-save-group">Save Group</button>
+
+        <div class="form-group">
+          <label for="f-g-desc">Description / Universe Notes <span class="optional">(optional)</span></label>
+          <textarea id="f-g-desc" rows="2"
+            placeholder="Overall premise, chronological reading order, connection between novels…"></textarea>
+        </div>
+
+        <!-- Sub-Books Selection Section -->
+        <div class="group-books-manager">
+          <div class="group-books-manager-header">
+            <label>Sub-Books in this Group / Universe</label>
+            <span class="form-hint">Add novels, novellas, or side stories from your library</span>
+          </div>
+
+          <div class="group-add-book-row">
+            <select id="f-g-add-book-select">
+              <option value="">-- Select a title to add --</option>
+            </select>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-group-add-book">+ Add to Group</button>
+          </div>
+
+          <div class="group-items-list" id="group-items-list">
+            <div class="empty-group-items" id="empty-group-items">No books added yet. Select a title above to link it
+              to
+              this group.</div>
+          </div>
         </div>
       </div>
-    </div>
-
-    <!-- Confirm Dialog -->
-    <div class="overlay hidden" id="overlay-confirm">
-      <div class="modal modal-sm" id="modal-confirm">
-        <div class="modal-header">
-          <h2 id="confirm-title">Confirm Delete</h2>
-        </div>
-        <div class="modal-body">
-          <p id="confirm-msg"></p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-ghost" id="btn-confirm-no">Cancel</button>
-          <button class="btn btn-danger" id="btn-confirm-yes">Delete</button>
-        </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger-ghost btn-sm hidden" id="btn-delete-group">Delete Group</button>
+        <button class="btn btn-ghost" data-close="overlay-series-group">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-group">Save Group</button>
       </div>
     </div>
+  </div>
 
-    <!-- Lightbox Modal -->
-    <div class="lightbox-overlay" id="image-lightbox">
-      <div class="lightbox-container">
-        <button class="lightbox-close" id="lightbox-close-btn" aria-label="Close modal">✕</button>
-        <img class="lightbox-img" id="lightbox-img" src="" alt="Full view">
+  <!-- Confirm Dialog -->
+  <div class="overlay hidden" id="overlay-confirm">
+    <div class="modal modal-sm" id="modal-confirm">
+      <div class="modal-header">
+        <h2 id="confirm-title">Confirm Delete</h2>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-msg"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="btn-confirm-no">Cancel</button>
+        <button class="btn btn-danger" id="btn-confirm-yes">Delete</button>
       </div>
     </div>
+  </div>
 
-    <!-- Toast -->
-    <div id="toast" class="toast hidden"></div>
+  <!-- Lightbox Modal -->
+  <div class="lightbox-overlay" id="image-lightbox">
+    <div class="lightbox-container">
+      <button class="lightbox-close" id="lightbox-close-btn" aria-label="Close modal">✕</button>
+      <img class="lightbox-img" id="lightbox-img" src="" alt="Full view">
+    </div>
+  </div>
 
-    <script src="./node_modules/vis-network/standalone/umd/vis-network.min.js"></script>
-    <script src="app.js"></script>
+  <!-- Toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="./node_modules/vis-network/standalone/umd/vis-network.min.js"></script>
+  <script src="app.js"></script>
 </body>
 
 </html>
