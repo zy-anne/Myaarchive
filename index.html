@@ -7,6 +7,7 @@
        pre-launch (exposed synchronously by preload.js), so the correct
        palette is active on first paint instead of flashing light-then-dark. -->
   <script>document.documentElement.setAttribute('data-theme', window.initialTheme || 'dark');</script>
+  <script>document.documentElement.setAttribute('data-color-theme', window.initialColorTheme || 'default');</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Personal reading library — track titles, volumes, and characters">
   <title>Myaarchive</title>
@@ -1468,6 +1469,14 @@
               <button type="button" class="type-chip" data-theme="light" id="chip-theme-light">Light Mode</button>
             </div>
           </div>
+
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <div class="settings-row-label">Color Palette</div>
+              <div class="settings-row-desc">Pick an accent palette — it applies to both Light and Dark Mode.</div>
+            </div>
+          </div>
+          <div class="theme-swatch-grid" id="color-theme-swatch-grid"></div>
         </div>
 
         <!-- Content -->

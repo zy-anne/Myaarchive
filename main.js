@@ -315,7 +315,7 @@ handle('account:delete', async (_, password) => {
 
 // ─── Window & lifecycle ─────────────────────────────────────────────────
 
-function createWindow(initialTheme) {
+function createWindow(initialTheme, initialColorTheme) {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -326,7 +326,7 @@ function createWindow(initialTheme) {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      additionalArguments: [`--initial-theme=${initialTheme}`],
+      additionalArguments: [`--initial-theme=${initialTheme}`, `--initial-color-theme=${initialColorTheme}`],
     },
     backgroundColor: initialTheme === 'light' ? '#F2EFE6' : '#1B1E1A',
     show: false,
@@ -361,13 +361,13 @@ app.whenReady().then(async () => {
     clearSession(); // user was deleted/DB reset — will re-prompt via auth gate
   }
 
-  const initialTheme = currentUser
-    ? ((await dataLayer.settings.getAll(db, currentUser.id)).theme === 'light' ? 'light' : 'dark')
-    : 'dark';
+  const initialSettings = currentUser ? await dataLayer.settings.getAll(db, currentUser.id) : {};
+  const initialTheme = initialSettings.theme === 'light' ? 'light' : 'dark';
+  const initialColorTheme = initialSettings.colorTheme || 'default';
   nativeTheme.themeSource = initialTheme;
-  createWindow(initialTheme);
+  createWindow(initialTheme, initialColorTheme);
 
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(initialTheme); });
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(initialTheme, initialColorTheme); });
 });
 
 app.on('window-all-closed', () => {

@@ -128,6 +128,92 @@
   color-scheme: dark;
 }
 
+/* ── Color Theme Presets ──────────────────────────────────────────────
+   Each preset only overrides the 8 raw brand-palette tokens defined at
+   the top of :root (frost-fairy, perrywinkle, twilight, mysterious-depths,
+   sunlight, sparkling-champagne, double-cream, noodles). Every derived
+   token (--bg-color, --primary, --accent, --gold, etc.) is a color-mix()
+   or var() built from these 8, in both :root and [data-theme="dark"], so
+   overriding just these 8 here re-colors the entire app in both light and
+   dark mode automatically — no other rule needs to change.
+   The default/"Twilight Reading Room" palette needs no block of its own;
+   it's just whatever :root already defines. */
+
+[data-color-theme="pink"] {
+  /* "Pink Lemonade Bliss" */
+  --frost-fairy: #f7d6e1;
+  --perrywinkle: #f1b41d;
+  --twilight: #e88e4f;
+  --mysterious-depths: #c7517d;
+  --sunlight: #f4c300;
+  --sparkling-champagne: #f29b8e;
+  --double-cream: #f48fb1;
+  --noodles: #f1a7b8;
+}
+
+[data-color-theme="purple"] {
+  /* "Mysterious Purple" */
+  --frost-fairy: #e0cfe6;
+  --perrywinkle: #4b2a6e;
+  --twilight: #2d157b;
+  --mysterious-depths: #050203;
+  --sunlight: #3e206e;
+  --sparkling-champagne: #6e4a7e;
+  --double-cream: #a76c8f;
+  --noodles: #c4a3c1;
+}
+
+[data-color-theme="sakura"] {
+  /* "Sakura Blossom" */
+  --frost-fairy: #fbd6dd;
+  --perrywinkle: #ff4d6d;
+  --twilight: #c9184a;
+  --mysterious-depths: #590d22;
+  --sunlight: #ff758f;
+  --sparkling-champagne: #ff8fa3;
+  --double-cream: #ffb3c1;
+  --noodles: #ffccd5;
+}
+
+[data-color-theme="green-latte"] {
+  --frost-fairy: #f6f9e5;
+  --perrywinkle: #a3d2a8;
+  --twilight: #7a6c59;
+  --mysterious-depths: #4a3c2a;
+  --sunlight: #e9b0b1;
+  --sparkling-champagne: #f8d3c5;
+  --double-cream: #f1e2c4;
+  --noodles: #d9b9bc;
+}
+
+[data-theme="dark"][data-color-theme="green-latte"] {
+  --mysterious-depths: #10190f;
+}
+
+[data-theme="dark"][data-color-theme="pink"] {
+  --mysterious-depths: #2a0d1a;
+}
+
+[data-theme="dark"][data-color-theme="purple"] {
+  --text-muted: #a793c9;
+}
+
+[data-theme="dark"][data-color-theme="sakura"] {
+  --mysterious-depths: #16100f;
+}
+
+[data-color-theme="saffron"] {
+  --frost-fairy: #f7f2e7;
+  --perrywinkle: #5b9bd5;
+  --twilight: #3b7a99;
+  --mysterious-depths: #1a3b2a;
+  --sunlight: #f6a623;
+  --sparkling-champagne: #fcbf6b;
+  --double-cream: #f9e5b6;
+  --noodles: #f7f2e7;
+}
+
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -3922,6 +4008,63 @@ body.sidebar-autohide .sidebar-backdrop.active {
   width: 200px;
 }
 
+/* ── Color Theme Picker (User Settings) ──────────────────────────────
+   Mirrors the .icon-swatch-grid pattern used for library category icons
+   — a grid of small clickable tiles, each showing a 3-dot preview of
+   that theme's primary/accent/gold colors, with an active-state border. */
+.theme-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: var(--sp-3);
+}
+
+.theme-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: var(--font-ui);
+}
+
+.theme-swatch:hover {
+  border-color: var(--accent);
+}
+
+.theme-swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.theme-swatch-dots {
+  display: flex;
+  gap: 3px;
+}
+
+.theme-swatch-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.theme-swatch-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.3;
+}
+
+.theme-swatch.active .theme-swatch-label {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
 /* ── Danger Zone (User Settings) ─────────────────────────────────────────
    Same section/row shape as the rest of User Settings, but with a
    danger-tinted border and background wash so it visually separates
@@ -3968,6 +4111,8 @@ body.sidebar-autohide .sidebar-backdrop.active {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+
 
 /* ── Series Groups (Collapsible Umbrella Cards) ──────────────────────────── */
 .series-groups-section {

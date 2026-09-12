@@ -47,6 +47,7 @@ let state = {
   selectedNavIcon: 'grid',
   selectedNavIconImage: null,
   theme: 'dark',
+  colorTheme: 'default', // 'default' | 'pink' | 'purple' | 'green-latte' | 'saffron' — persisted via settings (colorTheme)
   autoHideSidebar: false,  // boolean — persisted via settings (autoHideSidebar)
   showNsfwContent: true,   // boolean — persisted via settings (showNsfwContent); default true so nothing hides for existing users until they opt out
   groupsSectionCollapsed: false, // boolean — persisted via settings (groupsSectionCollapsed)
@@ -639,10 +640,24 @@ const THEME_ICONS = {
   light: '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>',
 };
 
+// Each entry's `colors` are that theme's primary/accent/gold tokens
+// (twilight/perrywinkle/sunlight) — used purely to draw the 3-dot preview
+// in the settings swatch grid; the actual re-theming happens via CSS
+// (see the [data-color-theme="..."] blocks in style.css).
+const COLOR_THEMES = [
+  { id: 'default', label: 'Twilight Reading Room', colors: ['#46508A', '#8598E9', '#E9CC92'] },
+  { id: 'pink', label: 'Pink Lemonade Bliss', colors: ['#e88e4f', '#f1b41d', '#f4c300'] },
+  { id: 'purple', label: 'Mysterious Purple', colors: ['#2d157b', '#4b2a6e', '#3e206e'] },
+  { id: 'green-latte', label: 'Green Strawberry Latte', colors: ['#7a6c59', '#a3d2a8', '#e9b0b1'] },
+  { id: 'saffron', label: 'Saffron Serenity', colors: ['#3b7a99', '#5b9bd5', '#f6a623'] },
+  { id: 'sakura', label: 'Sakura Blossom', colors: ['#c9184a', '#ff4d6d', '#ff758f'] },
+];
+
 // Loads theme, sidebar auto-hide preference, view modes, and sort preferences in one round trip.
 async function loadSettings() {
   const settings = await window.api.settings.getAll();
   state.theme = settings.theme === 'light' ? 'light' : 'dark';
+  state.colorTheme = COLOR_THEMES.some(t => t.id === settings.colorTheme) ? settings.colorTheme : 'default';
   state.autoHideSidebar = settings.autoHideSidebar === 'true';
   state.showNsfwContent = settings.showNsfwContent !== 'false'; // opt-out: absent/anything but 'false' = shown
   state.groupsSectionCollapsed = settings.groupsSectionCollapsed === 'true';
@@ -653,6 +668,7 @@ async function loadSettings() {
   state.sortDir = settings.sortDir === 'desc' ? 'desc' : 'asc';
   state.defaultStartView = settings.defaultStartView || 'last';
   state.lastOpenedLibraryId = settings.lastOpenedLibraryId ? parseInt(settings.lastOpenedLibraryId) : null;
+  applyColorTheme();
   applyTheme();
   applySidebarAutoHide();
   applyGroupsCollapsed();
@@ -665,6 +681,39 @@ function applyTheme() {
   el('theme-toggle-label').textContent = state.theme === 'dark' ? 'Dark Mode' : 'Light Mode';
   document.querySelectorAll('#settings-theme-chips .type-chip').forEach(c => {
     c.classList.toggle('active', c.dataset.theme === state.theme);
+  });
+}
+
+function applyColorTheme() {
+  document.documentElement.setAttribute('data-color-theme', state.colorTheme);
+  document.querySelectorAll('#color-theme-swatch-grid .theme-swatch').forEach(sw => {
+    sw.classList.toggle('active', sw.dataset.themeId === state.colorTheme);
+  });
+}
+
+async function setColorTheme(id) {
+  if (id === state.colorTheme) return;
+  state.colorTheme = id;
+  applyColorTheme();
+  await window.api.settings.set('colorTheme', id);
+  toast('Color palette updated');
+}
+
+// Builds the swatch grid inside User Settings — same "render into a
+// container, wire clicks inline" pattern as renderIconSwatches().
+function renderColorThemeSwatches() {
+  const grid = el('color-theme-swatch-grid');
+  if (!grid) return;
+  grid.innerHTML = COLOR_THEMES.map(t => `
+    <button type="button" class="theme-swatch ${state.colorTheme === t.id ? 'active' : ''}" data-theme-id="${t.id}" title="${escapeHTML(t.label)}">
+      <span class="theme-swatch-dots">
+        ${t.colors.map(c => `<span class="theme-swatch-dot" style="background:${c}"></span>`).join('')}
+      </span>
+      <span class="theme-swatch-label">${escapeHTML(t.label)}</span>
+    </button>
+  `).join('');
+  grid.querySelectorAll('.theme-swatch').forEach(btn => {
+    btn.addEventListener('click', () => setColorTheme(btn.dataset.themeId));
   });
 }
 
@@ -724,6 +773,8 @@ async function openUserSettingsModal() {
   document.querySelectorAll('#settings-theme-chips .type-chip').forEach(c => {
     c.classList.toggle('active', c.dataset.theme === state.theme);
   });
+
+  renderColorThemeSwatches();
 
   await refreshSecurityQuestionStatus();
 

@@ -9,6 +9,8 @@ const invoke = (ch, ...a) => ipcRenderer.invoke(ch, ...a);
 // the wrong theme.
 const themeArg = process.argv.find(a => a.startsWith('--initial-theme='));
 contextBridge.exposeInMainWorld('initialTheme', themeArg ? themeArg.split('=')[1] : 'dark');
+const colorThemeArg = process.argv.find(a => a.startsWith('--initial-color-theme='));
+contextBridge.exposeInMainWorld('initialColorTheme', colorThemeArg ? colorThemeArg.split('=')[1] : 'default');
 
 contextBridge.exposeInMainWorld('api', {
   auth: {
