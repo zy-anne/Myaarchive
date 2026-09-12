@@ -1511,6 +1511,24 @@ function bindEvents() {
   el('btn-add-rel-graph').addEventListener('click', () => openRelModal());
   el('btn-save-relationship').addEventListener('click', saveRelationship);
 
+  // Relationship Detail Actions
+  el('btn-rel-detail-edit').addEventListener('click', () => {
+    closeModal('overlay-rel-detail');
+    openRelModal(state.currentRelationship);
+  });
+  el('btn-rel-detail-delete').addEventListener('click', () => {
+    const rel = state.currentRelationship;
+    if (!rel) return;
+    confirmDelete('Delete this relationship?', async () => {
+      await window.api.relationships.delete(rel.id);
+      toast('Relationship deleted');
+      closeModal('overlay-rel-detail');
+      await loadSeriesData(state.currentSeries.id);
+      if (!el('overlay-graph').classList.contains('hidden')) showGraph();
+      if (!el('drawer-overlay').classList.contains('hidden') && state.currentCharacter) openCharDrawer(state.currentCharacter);
+    });
+  });
+
   // Relationship type chips (color category only)
   document.querySelectorAll('#f-r-type .type-chip').forEach(chip => {
     chip.addEventListener('click', (e) => {
@@ -5138,6 +5156,57 @@ function renderDrawerRels() {
   });
 }
 
+// ─── Relationship Detail (view-only) ───────────────────────────────────
+// Opened when a graph edge is clicked. Mirrors the Character Lore
+// drawer's portrait-card look (lore-portrait-card / lore-portrait-badge /
+// lore-portrait-img-wrap) but for two characters side by side, with the
+// relationship's type/label/notes between them instead of Status & Role,
+// Overall Vibes, Appears vs Reality, or Personality — none of which apply
+// to a relationship. Edit/Delete live in the header and hand off to the
+// existing edit modal / delete flow rather than duplicating them here.
+async function openRelDetailModal(rel) {
+  state.currentRelationship = rel;
+  const fromChar = state.characters.find(c => c.id === rel.from_character_id);
+  const toChar = state.characters.find(c => c.id === rel.to_character_id);
+
+  const getPortraitSrc = async (c) => {
+    if (!c) return null;
+    return c.profile_image_path ? await window.api.files.getImageData(c.profile_image_path) : null;
+  };
+  const [fromSrc, toSrc] = await Promise.all([getPortraitSrc(fromChar), getPortraitSrc(toChar)]);
+
+  const renderPortrait = (c, src) => `
+    <div class="lore-portrait-card rel-detail-portrait">
+      <div class="lore-portrait-badge">${escapeHTML(c?.name || 'Unknown')}</div>
+      <div class="lore-portrait-img-wrap" style="${src ? `background-image: url('${src}')` : ''}">
+        ${!src ? `<span class="char-avatar-fallback">${escapeHTML((c?.name || '?').charAt(0).toUpperCase())}</span>` : ''}
+      </div>
+    </div>
+  `;
+
+  const category = relCategory(rel);
+  const arrow = rel.is_bidirectional ? '↔' : '→';
+
+  el('rel-detail-body').innerHTML = `
+    <div class="rel-detail-hero">
+      ${renderPortrait(fromChar, fromSrc)}
+      <div class="rel-detail-center">
+        <span class="rel-detail-arrow">${arrow}</span>
+        <span class="rel-type rel-detail-type-badge ${category.toLowerCase()}">${escapeHTML(relLabel(rel))}</span>
+      </div>
+      ${renderPortrait(toChar, toSrc)}
+    </div>
+    ${rel.notes ? `
+      <div class="lore-section rel-detail-notes-section">
+        <div class="lore-label">NOTES</div>
+        <div class="lore-notes-body">${nl2br(rel.notes)}</div>
+      </div>
+    ` : `<p class="empty-dim rel-detail-empty-notes">No notes added for this relationship yet.</p>`}
+  `;
+
+  openModal('overlay-rel-detail');
+}
+
 function openRelModal(rel = null) {
   if (state.characters.length < 2) return toast('Need at least 2 characters to create a relationship', true);
 
@@ -5390,7 +5459,7 @@ async function showGraph() {
       if (c) openCharDrawer(c);
     } else if (params.edges.length > 0) {
       const rel = state.relationships.find(r => r.id === params.edges[0]);
-      if (rel) openRelModal(rel);
+      if (rel) openRelDetailModal(rel);
     }
   });
 

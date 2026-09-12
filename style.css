@@ -3097,6 +3097,53 @@ select option:focus {
   line-height: 1.5;
 }
 
+/* ── Relationship Detail Modal (view-only, from graph edge clicks) ────────
+   Reuses the lore-portrait-* classes from the Character Lore drawer for
+   visual consistency, laid out two-up with the relationship's type/label
+   and notes in between instead of a single character's bio fields. */
+.rel-detail-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-6);
+  margin-bottom: var(--sp-6);
+  flex-wrap: wrap;
+}
+
+.rel-detail-portrait {
+  width: 145px;
+}
+
+.rel-detail-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+
+.rel-detail-arrow {
+  font-size: 24px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.rel-detail-type-badge {
+  font-size: 12px;
+  padding: 4px 12px;
+  white-space: nowrap;
+}
+
+.rel-detail-notes-section {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.rel-detail-empty-notes {
+  text-align: center;
+}
+
 /* ── Volume Detail Modal Formatting ──────────────────────────────────────── */
 .vol-detail-content {
   display: flex;

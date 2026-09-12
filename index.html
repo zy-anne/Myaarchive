@@ -1140,6 +1140,21 @@
     </div>
   </div>
 
+  <!-- Relationship Detail (view-only, opened from graph edge clicks) -->
+  <div class="overlay hidden" id="overlay-rel-detail">
+    <div class="modal modal-lg" id="modal-rel-detail">
+      <div class="modal-header">
+        <h2>Relationship</h2>
+        <div class="modal-header-actions">
+          <button class="btn btn-ghost btn-sm" id="btn-rel-detail-edit">Edit</button>
+          <button class="btn btn-danger-ghost btn-sm" id="btn-rel-detail-delete">Delete</button>
+          <button class="close-btn" data-close="overlay-rel-detail">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" id="rel-detail-body"></div>
+    </div>
+  </div>
+
   <!-- Relationship Graph Modal -->
   <div class="overlay hidden" id="overlay-graph">
     <div class="modal modal-fullscreen" id="modal-graph">
