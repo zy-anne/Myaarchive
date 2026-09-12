@@ -4058,10 +4058,64 @@ body.sidebar-autohide .sidebar-backdrop.active {
 }
 
 .settings-row .settings-goal-input {
-  flex: 0 0 90px;
-  width: 90px;
-  padding: 8px 12px;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 6px;
   text-align: center;
+  border: none;
+  border-radius: 0;
+}
+
+.settings-row .settings-goal-input:focus {
+  box-shadow: none;
+}
+
+/* Custom stepper replaces the native number-input spin buttons — those
+   auto-repeat while held (a Chromium behavior, not something JS controls),
+   which is what let the value run all the way down to `min` on its own.
+   These buttons only step once per click, no hold-to-repeat. */
+.goal-stepper {
+  display: flex;
+  align-items: center;
+  flex: 0 0 130px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.goal-step-btn {
+  flex-shrink: 0;
+  width: 30px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.goal-step-btn:hover {
+  color: var(--text-main);
+  background: var(--surface-hover);
+}
+
+/* Hides the native spinner arrows so only our custom buttons control the
+   value — otherwise both would be visible and only one is wired up. */
+#setting-annual-goal::-webkit-inner-spin-button,
+#setting-annual-goal::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+#setting-annual-goal {
+  -moz-appearance: textfield;
 }
 
 .settings-row .settings-select-input {

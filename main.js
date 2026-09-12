@@ -39,6 +39,27 @@ const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENT_SIZE_BYTES = 100 * 1024 * 1024;
 const formatMB = (bytes) => `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 
+const imageDataUrlCache = new Map();
+const IMAGE_DATA_URL_CACHE_MAX = 300;
+
+function getCachedImageDataUrl(key) {
+  const cached = imageDataUrlCache.get(key);
+  if (cached !== undefined) {
+    imageDataUrlCache.delete(key);
+    imageDataUrlCache.set(key, cached); // bump to most-recently-used
+  }
+  return cached;
+}
+
+function setCachedImageDataUrl(key, dataUrl) {
+  imageDataUrlCache.delete(key);
+  imageDataUrlCache.set(key, dataUrl);
+  if (imageDataUrlCache.size > IMAGE_DATA_URL_CACHE_MAX) {
+    const oldest = imageDataUrlCache.keys().next().value;
+    imageDataUrlCache.delete(oldest);
+  }
+}
+
 const getImagesPath = () => path.join(app.getPath('userData'), 'images'); // legacy local images — see note in files:getImageData
 const getAttachmentsPath = () => path.join(app.getPath('userData'), 'attachments'); // legacy local attachments
 const getCacheDir = () => path.join(app.getPath('userData'), 'asset-cache'); // downloaded-from-R2 cache
@@ -417,6 +438,7 @@ handle('series:update', (_, id, d) => dataLayer.series.update(db, requireUser(),
 handle('series:delete', (_, id) => dataLayer.series.delete(db, requireUser(), id));
 handle('series:transfer', (_, id, targetLibId) => dataLayer.series.transfer(db, requireUser(), id, targetLibId));
 handle('series:copy', (_, id, targetLibId, opts) => dataLayer.series.copy(db, requireUser(), id, targetLibId, opts));
+handle('series:getBookTypesAndFandoms', () => dataLayer.series.getBookTypesAndFandoms(db, requireUser()));
 
 // ─── IPC: Series Groups (Franchises / Shared Universes) ───────────────────
 handle('seriesGroups:getAll', (_, libraryId) => dataLayer.seriesGroups.getAll(db, requireUser(), libraryId));
@@ -431,6 +453,7 @@ handle('volumes:get', (_, id) => dataLayer.volumes.get(db, id));
 handle('volumes:create', (_, d) => dataLayer.volumes.create(db, d));
 handle('volumes:update', (_, id, d) => dataLayer.volumes.update(db, id, d));
 handle('volumes:delete', (_, id) => dataLayer.volumes.delete(db, id));
+handle('volumes:getReadDatesForOwner', () => dataLayer.volumes.getReadDatesForOwner(db, requireUser()));
 
 // ─── IPC: Characters ──────────────────────────────────────────────────────
 handle('characters:getBySeries', (_, sid) => dataLayer.characters.getBySeries(db, sid));
@@ -531,23 +554,21 @@ ipcMain.handle('files:saveImage', async (_, sourcePath, category) => {
   await uploadBuffer(s3, process.env.R2_BUCKET_NAME, key, buffer, mime);
   return key; // stored directly in DB columns like cover_image_path
 });
-// `key` is now an R2 object key, not a local path. Downloads once into the
-// local cache (storage/cache.js), then every subsequent read is instant —
-// same <img src="data:..."> contract the renderer already expects, so no
-// app.js changes were needed for this swap.
+
 ipcMain.handle('files:getImageData', async (_, key) => {
   if (!key) return null;
-  // Backward-compat: anything saved by the OLD local-disk version is a real
-  // filesystem path (starts with the userData images folder), not an R2
-  // key — read it directly instead of trying to "download" a local path
-  // from R2, which would just fail. Any covers/portraits/gallery pics you
-  // added before this step fall into this branch; re-uploading them will
-  // move them onto R2 properly, but nothing breaks in the meantime.
+
+  const cached = getCachedImageDataUrl(key);
+  if (cached !== undefined) return cached;
+
+
   if (fs.existsSync(key)) {
     try {
       const ext = path.extname(key).slice(1).toLowerCase();
       const mime = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' }[ext] || 'image/jpeg';
-      return `data:${mime};base64,${fs.readFileSync(key).toString('base64')}`;
+      const dataUrl = `data:${mime};base64,${fs.readFileSync(key).toString('base64')}`;
+      setCachedImageDataUrl(key, dataUrl);
+      return dataUrl;
     } catch { return null; }
   }
 
@@ -555,7 +576,9 @@ ipcMain.handle('files:getImageData', async (_, key) => {
   if (!filePath) return null;
   const ext = path.extname(filePath).slice(1).toLowerCase();
   const mime = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' }[ext] || 'image/jpeg';
-  return `data:${mime};base64,${fs.readFileSync(filePath).toString('base64')}`;
+  const dataUrl = `data:${mime};base64,${fs.readFileSync(filePath).toString('base64')}`;
+  setCachedImageDataUrl(key, dataUrl);
+  return dataUrl;
 });
 
 // ─── IPC: Export ──────────────────────────────────────────────────────────

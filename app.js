@@ -800,19 +800,6 @@ async function handleSignOut() {
   state.libraries = [];
 }
 
-async function handleSignOut() {
-  await window.api.auth.signOut();
-  closeModal('overlay-user-settings');
-  el('app').classList.add('hidden');
-  el('auth-gate').classList.remove('hidden');
-  el('auth-username').value = '';
-  el('auth-password').value = '';
-  el('auth-gate-status').textContent = 'Signed out successfully.';
-  state.currentSeries = null;
-  state.series = [];
-  state.libraries = [];
-}
-
 // Triggers the main-process save dialog + full-library JSON export
 // (main.js's export:json handler). That handler already returns false on
 // cancel and true on success — no error path to handle beyond a generic
@@ -1087,14 +1074,37 @@ function bindEvents() {
     toast('Default start view saved');
   });
 
-  // Reading Goals (User Settings) — auto-saves on blur, same pattern as
-  // the status name/color rows in Manage Statuses.
+  // Reading Goals (User Settings) — auto-saves, same pattern as the
+  // status name/color rows in Manage Statuses. Debounced rather than
+  // saving on every 'change' event, so rapid steps collapse into one
+  // IPC/DB write instead of one per click.
+  let annualGoalSaveTimeout = null;
+  const scheduleAnnualGoalSave = (value) => {
+    if (annualGoalSaveTimeout) clearTimeout(annualGoalSaveTimeout);
+    annualGoalSaveTimeout = setTimeout(() => saveAnnualGoal(value), 500);
+  };
   el('setting-annual-goal')?.addEventListener('change', (e) => {
-    saveAnnualGoal(parseInt(e.target.value));
+    scheduleAnnualGoalSave(parseInt(e.target.value));
   });
   el('setting-annual-goal')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') e.target.blur();
   });
+
+  // Custom +/- stepper (see index.html) replaces the native number-input
+  // spin buttons, which auto-repeat while held — a browser behavior, not
+  // something the debounce above could control — and could run the value
+  // all the way down to its min on a slightly-too-long click. A plain
+  // button click never auto-repeats, so each press is exactly one step.
+  const stepAnnualGoal = (delta) => {
+    const input = el('setting-annual-goal');
+    if (!input) return;
+    const current = parseInt(input.value) || 0;
+    const next = Math.max(1, current + delta);
+    input.value = next;
+    scheduleAnnualGoalSave(next);
+  };
+  el('btn-goal-decrement')?.addEventListener('click', () => stepAnnualGoal(-1));
+  el('btn-goal-increment')?.addEventListener('click', () => stepAnnualGoal(1));
 
   // Sidebar Drawer Toggle & Hover triggers (for auto-hide mode)
   document.querySelectorAll('.btn-sidebar-toggle').forEach(btn => {
@@ -2184,34 +2194,28 @@ async function showStats() {
   }
 }
 
-// Every volume across every series this user owns that has a "Date Read"
-// set, plus every standalone title with a "Date Finished" set — each
-// event carries the genres/tags of its parent series, which is what
-// powers the per-month/per-year genre & tag breakdowns further down this
-// file. This is an N+1 fetch (one volumes:getBySeries call per series),
-// same pattern export:json already uses — fine for a personal library,
-// not meant for thousands of titles. Each series is fetched independently
-// so one bad/slow series can't take down the whole stats page.
+
 async function loadReadingEvents(allSeries) {
   const events = [];
-  for (const s of allSeries) {
-    if (s.kind === 'standalone') {
-      if (s.date_finished) {
-        events.push({ date: s.date_finished, seriesId: s.id, seriesTitle: s.title, genres: s.genres.map(g => g.name), tags: s.tags.map(t => t.name) });
-      }
-      continue;
+  const seriesById = new Map(allSeries.map(s => [s.id, s]));
+
+  allSeries.forEach(s => {
+    if (s.kind === 'standalone' && s.date_finished) {
+      events.push({ date: s.date_finished, seriesId: s.id, seriesTitle: s.title, genres: s.genres.map(g => g.name), tags: s.tags.map(t => t.name) });
     }
-    try {
-      const vols = await window.api.volumes.getBySeries(s.id);
-      vols.forEach(v => {
-        if (v.date_read) {
-          events.push({ date: v.date_read, seriesId: s.id, seriesTitle: s.title, genres: s.genres.map(g => g.name), tags: s.tags.map(t => t.name) });
-        }
-      });
-    } catch (err) {
-      console.error(`[stats] Failed to load volumes for series ${s.id}:`, err);
-    }
+  });
+
+  try {
+    const rows = await window.api.volumes.getReadDatesForOwner();
+    rows.forEach(v => {
+      const s = seriesById.get(v.series_id);
+      if (!s || s.kind === 'standalone') return; // standalone handled above
+      events.push({ date: v.date_read, seriesId: s.id, seriesTitle: s.title, genres: s.genres.map(g => g.name), tags: s.tags.map(t => t.name) });
+    });
+  } catch (err) {
+    console.error('[stats] Failed to load volume read dates:', err);
   }
+
   return events;
 }
 
@@ -3940,14 +3944,10 @@ function addFandom(name) {
 const BOOK_TYPE_SEED_OPTIONS = ['Novel', 'Light Novel', 'Web Novel', 'Graphic Novel', 'Manga', 'Manhwa', 'Manhua', 'Comic', 'Fanfic'];
 
 async function loadBookTypes() {
-  const allOwnSeries = await window.api.series.getAll({});
-  state.allBookTypes = [...new Set(allOwnSeries.map(s => (s.book_type || '').trim()).filter(Boolean))];
-  // Fandom is now a multi-value, comma-delimited field (see
-  // parseFandomList) — split each series's value into individual tokens
-  // before deduping, so autocomplete offers "Harry Potter" and "Naruto"
-  // separately rather than the whole combo string as one suggestion.
+  const rows = await window.api.series.getBookTypesAndFandoms();
+  state.allBookTypes = [...new Set(rows.map(s => (s.book_type || '').trim()).filter(Boolean))];
   const fandomSet = new Set();
-  allOwnSeries.forEach(s => parseFandomList(s.fandom).forEach(f => fandomSet.add(f)));
+  rows.forEach(s => parseFandomList(s.fandom).forEach(f => fandomSet.add(f)));
   state.allFandoms = [...fandomSet];
 }
 

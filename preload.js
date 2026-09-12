@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('api', {
     delete: (id) => invoke('series:delete', id),
     transfer: (id, targetLibId) => invoke('series:transfer', id, targetLibId),
     copy: (id, targetLibId, opts) => invoke('series:copy', id, targetLibId, opts),
+    getBookTypesAndFandoms: () => invoke('series:getBookTypesAndFandoms'),
   },
   seriesGroups: {
     getAll: (libraryId) => invoke('seriesGroups:getAll', libraryId),
@@ -50,6 +51,7 @@ contextBridge.exposeInMainWorld('api', {
     create: (d) => invoke('volumes:create', d),
     update: (id, d) => invoke('volumes:update', id, d),
     delete: (id) => invoke('volumes:delete', id),
+    getReadDatesForOwner: () => invoke('volumes:getReadDatesForOwner'),
   },
   characters: {
     getBySeries: (sid) => invoke('characters:getBySeries', sid),

@@ -296,6 +296,13 @@ async function seriesGetAll(db, ownerId, filters = {}) {
   return rows.map(parseSeriesRow);
 }
 
+async function seriesGetBookTypesAndFandoms(db, ownerId) {
+  return q(db, `
+    SELECT book_type, fandom FROM series
+    WHERE library_id IN (SELECT id FROM libraries WHERE owner_id = ?)
+  `, [ownerId]);
+}
+
 // Ownership check for single-record reads: join through libraries.owner_id
 // rather than trusting the id alone, so IDs from one account can't be used
 // to peek at another account's data.
@@ -589,6 +596,16 @@ async function volumesUpdate(db, id, d) {
   return true;
 }
 async function volumesDelete(db, id) { await run(db, `DELETE FROM volumes WHERE id = ?`, [id]); return true; }
+
+async function volumesGetReadDatesForOwner(db, ownerId) {
+  return q(db, `
+    SELECT v.series_id, v.date_read
+    FROM volumes v
+    JOIN series s ON v.series_id = s.id
+    WHERE v.date_read IS NOT NULL
+      AND s.library_id IN (SELECT id FROM libraries WHERE owner_id = ?)
+  `, [ownerId]);
+}
 
 // ─── Characters ─────────────────────────────────────────────────────────
 
@@ -1485,13 +1502,16 @@ module.exports = {
   settings: { getAll: settingsGetAll, set: settingsSet },
   series: {
     getAll: seriesGetAll, get: seriesGet, create: seriesCreate, update: seriesUpdate, delete: seriesDelete,
-    transfer: seriesTransfer, copy: seriesCopy,
+    transfer: seriesTransfer, copy: seriesCopy, getBookTypesAndFandoms: seriesGetBookTypesAndFandoms,
   },
   seriesGroups: {
     getAll: seriesGroupsGetAll, get: seriesGroupsGet, create: seriesGroupsCreate,
     update: seriesGroupsUpdate, delete: seriesGroupsDelete,
   },
-  volumes: { getBySeries: volumesGetBySeries, get: volumesGet, create: volumesCreate, update: volumesUpdate, delete: volumesDelete },
+  volumes: {
+    getBySeries: volumesGetBySeries, get: volumesGet, create: volumesCreate, update: volumesUpdate, delete: volumesDelete,
+    getReadDatesForOwner: volumesGetReadDatesForOwner,
+  },
   characters: { getBySeries: charactersGetBySeries, get: charactersGet, create: charactersCreate, update: charactersUpdate, delete: charactersDelete },
   relationships: {
     getBySeries: relationshipsGetBySeries, getByCharacter: relationshipsGetByCharacter,
