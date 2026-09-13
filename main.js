@@ -127,10 +127,15 @@ function isLocalReplicaCorruptionError(err) {
     /no such table:\s*main\.\w+_old\b/i.test(msg) ||
     /database disk image is malformed/i.test(msg) ||
     /TRANSACTION_CLOSED/i.test(msg) ||
-    /database schema has changed/i.test(msg)
+    /database schema has changed/i.test(msg) ||
+    // Embedded-replica WAL frame conflict — the local library.db drifted
+    // out of sync with the remote Turso primary (e.g. a write landed
+    // between this replica's last sync and its own local write attempt).
+    // Same fix as every other case here: discard the local file and
+    // re-clone fresh, then retry the operation that failed.
+    /WalConflict/i.test(msg)
   );
 }
-
 function newDesktopClient() {
   return createDesktopClient({
     localDbPath: getDbPath(),
