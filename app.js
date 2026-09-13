@@ -35,6 +35,7 @@ let state = {
   filterArtists: [],
   filterPublishers: [],
   filterTranslated: [],
+  filterStatusOrigin: [],
   filterNsfw: [],
   allSeriesRaw: [], // unfiltered (library-scoped) series list — source for client-side filtering + facet lists
   searchQuery: '',
@@ -1278,6 +1279,7 @@ function bindEvents() {
     state.filterArtists = [];
     state.filterPublishers = [];
     state.filterTranslated = [];
+    state.filterStatusOrigin = [];
     state.filterNsfw = [];
     el('filter-year-min').value = '';
     el('filter-year-max').value = '';
@@ -1303,6 +1305,7 @@ function bindEvents() {
     state.filterArtists = [];
     state.filterPublishers = [];
     state.filterTranslated = [];
+    state.filterStatusOrigin = [];
     state.filterNsfw = [];
     dom.search.value = '';
     el('filter-year-min').value = '';
@@ -1770,6 +1773,8 @@ function applyClientFilters(list) {
       if (!state.filterTranslated.includes(norm)) return false;
     }
 
+    if (state.filterStatusOrigin.length && !state.filterStatusOrigin.includes((s.status_country_of_origin || '').trim())) return false;
+
     if (state.filterNsfw.length) {
       const norm = s.is_nsfw ? 'Yes' : 'No';
       if (!state.filterNsfw.includes(norm)) return false;
@@ -2003,6 +2008,12 @@ function renderMoreFilterPanel() {
 
   renderFilterCheckboxList('filter-translated-list', ['Yes', 'No', 'Unknown'], state.filterTranslated, (value, checked) => {
     state.filterTranslated = checked ? [...state.filterTranslated, value] : state.filterTranslated.filter(v => v !== value);
+    updateFilterBadges();
+    loadLibrary();
+  });
+
+  renderFilterCheckboxList('filter-status-origin-list', uniqueValues(state.allSeriesRaw, 'status_country_of_origin'), state.filterStatusOrigin, (value, checked) => {
+    state.filterStatusOrigin = checked ? [...state.filterStatusOrigin, value] : state.filterStatusOrigin.filter(v => v !== value);
     updateFilterBadges();
     loadLibrary();
   });
@@ -3693,7 +3704,7 @@ function updateFilterBadges() {
 
   const moreCount = state.filterBookTypes.length + state.filterFandoms.length + state.filterLanguages.length + state.filterCountries.length
     + state.filterAuthors.length + state.filterArtists.length + state.filterPublishers.length
-    + state.filterTranslated.length + state.filterNsfw.length + (state.filterRating > 0 ? 1 : 0)
+    + state.filterTranslated.length + state.filterStatusOrigin.length + state.filterNsfw.length + (state.filterRating > 0 ? 1 : 0)
     + (state.filterYearMin ? 1 : 0) + (state.filterYearMax ? 1 : 0);
   const mCount = el('more-filter-count');
   mCount.textContent = moreCount;
