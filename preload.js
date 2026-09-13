@@ -70,6 +70,9 @@ contextBridge.exposeInMainWorld('api', {
   tags: {
     getAll: () => invoke('tags:getAll'),
     create: (n) => invoke('tags:create', n),
+    update: (id, d) => invoke('tags:update', id, d),
+    delete: (id) => invoke('tags:delete', id),
+    getUsageCounts: () => invoke('tags:getUsageCounts'),
   },
   genres: {
     getAll: () => invoke('genres:getAll'),

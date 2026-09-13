@@ -2263,7 +2263,8 @@ tbody tr:hover {
   padding: var(--sp-5);
 }
 
-#overlay-manage-statuses {
+#overlay-manage-statuses,
+#overlay-manage-tags {
   z-index: 110;
 }
 
@@ -3584,6 +3585,23 @@ select option:focus {
 
 .status-manage-add input[type="text"] {
   flex: 1;
+}
+
+.status-manage-add input[type="text"] {
+  flex: 1;
+}
+
+/* Usage-count hint in Manage Tags ("3 titles") — sits between the name
+   input and the delete button, same row shape as Manage Statuses but
+   with this one extra bit of context since tag deletion isn't blocked
+   the way status deletion is. */
+.tag-manage-usage {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 0 4px;
 }
 
 input[type="color"] {

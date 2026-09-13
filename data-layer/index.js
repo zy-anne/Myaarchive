@@ -153,6 +153,50 @@ async function tagsCreate(db, ownerId, name) {
   return one(db, `SELECT * FROM tags WHERE owner_id = ? AND name = ?`, [ownerId, trimmed]);
 }
 
+// Renames/recolors a tag in place. Since series_tags links by tag_id (not
+// by name, unlike statuses which store the plain status name on series),
+// a rename here doesn't require any cascade — every title already tagged
+// with it stays linked automatically.
+async function tagsUpdate(db, ownerId, id, d) {
+  const name = (d.name || '').trim();
+  if (!name) throw new Error('Tag name is required');
+  const dupe = await one(db, `SELECT id FROM tags WHERE owner_id = ? AND name = ? COLLATE NOCASE AND id != ?`, [ownerId, name, id]);
+  if (dupe) throw new Error('That tag already exists');
+  const existing = await one(db, `SELECT id FROM tags WHERE id = ? AND owner_id = ?`, [id, ownerId]);
+  if (!existing) throw new Error('Tag not found for this user');
+  await run(db, `UPDATE tags SET name=?, color=? WHERE id=? AND owner_id=?`, [name, d.color || colorForTagName(name), id, ownerId]);
+  return true;
+}
+
+// Unlike statusesDelete, this never blocks on "still in use" — the whole
+// point is to let someone clean up a mistyped or abandoned tag without
+// having to untag every title first. Removes the series_tags links first
+// (no FK cascade in this schema) so nothing points at a dangling tag_id.
+async function tagsDelete(db, ownerId, id) {
+  const existing = await one(db, `SELECT id FROM tags WHERE id = ? AND owner_id = ?`, [id, ownerId]);
+  if (!existing) return true;
+  await run(db, `DELETE FROM series_tags WHERE tag_id = ?`, [id]);
+  await run(db, `DELETE FROM tags WHERE id = ? AND owner_id = ?`, [id, ownerId]);
+  return true;
+}
+
+// Powers the "N titles" hint next to each tag in Manage Tags — how many
+// of this user's titles currently carry it, so deleting isn't a total
+// guess about what you're about to detach.
+async function tagsGetUsageCounts(db, ownerId) {
+  const rows = await q(db, `
+    SELECT t.id as tag_id, COUNT(st.series_id) as count
+    FROM tags t
+    LEFT JOIN series_tags st ON st.tag_id = t.id
+    WHERE t.owner_id = ?
+    GROUP BY t.id
+  `, [ownerId]);
+  const map = {};
+  rows.forEach(r => { map[r.tag_id] = r.count; });
+  return map;
+}
+
+
 async function genresGetAll(db) {
   return q(db, `SELECT * FROM genres ORDER BY name COLLATE NOCASE`);
 }
@@ -1529,7 +1573,8 @@ module.exports = {
   ensureVolumesExtraColumns,
   ensureCharacterExtraColumns,
   ensureIndexes,
-  libraries: { getAll: librariesGetAll, create: librariesCreate, update: librariesUpdate, delete: librariesDelete, reorder: librariesReorder }, tags: { getAll: tagsGetAll, create: tagsCreate },
+  libraries: { getAll: librariesGetAll, create: librariesCreate, update: librariesUpdate, delete: librariesDelete, reorder: librariesReorder },
+  tags: { getAll: tagsGetAll, create: tagsCreate, update: tagsUpdate, delete: tagsDelete, getUsageCounts: tagsGetUsageCounts },
   genres: { getAll: genresGetAll },
   contentWarnings: { getAll: contentWarningsGetAll, create: contentWarningsCreate },
   statuses: { getAll: statusesGetAll, create: statusesCreate, update: statusesUpdate, delete: statusesDelete },

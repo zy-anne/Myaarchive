@@ -1225,6 +1225,7 @@ function bindEvents() {
   // Add/Edit Title form — see index.html's "Reading Statuses" section)
   el('btn-open-manage-statuses')?.addEventListener('click', openManageStatusesModal);
   el('btn-add-status').addEventListener('click', addStatus);
+  el('btn-open-manage-tags')?.addEventListener('click', openManageTagsModal);
   el('new-status-name').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); addStatus(); }
   });
@@ -3633,6 +3634,106 @@ async function addStatus() {
   } catch (e) {
     toast(e.message || 'Could not add status', true);
   }
+}
+
+// ─── Manage Tags (User Settings) ─────────────────────────────────────────
+// Same shape as Manage Statuses above (auto-save on blur/color-change,
+// inline delete), with two deliberate differences: no "+ Add" row (new
+// tags are only ever created inline while tagging a title, via
+// addTag()/handleTagInput() further below), and deletion is never
+// blocked by usage — the whole point is to let someone remove a
+// mistyped or abandoned tag without untagging every title first. The
+// usage count is just an FYI shown before confirming, not a gate.
+
+function openManageTagsModal() {
+  renderTagManageList();
+  openModal('overlay-manage-tags');
+}
+
+async function renderTagManageList() {
+  const container = el('tag-manage-list');
+  const [tags, usage] = await Promise.all([
+    window.api.tags.getAll(),
+    window.api.tags.getUsageCounts(),
+  ]);
+  state.allTags = tags; // keep the shared tag list (autocomplete, filters) in sync too
+
+  if (tags.length === 0) {
+    container.innerHTML = `<div class="filter-option-empty">No tags yet — tags are created from the Add/Edit Title form.</div>`;
+    return;
+  }
+
+  container.innerHTML = tags.map(t => {
+    const count = usage[t.id] || 0;
+    return `
+    <div class="status-manage-row" data-id="${t.id}">
+      <input type="color" class="tag-color-input" value="${t.color || '#4a90e2'}" data-id="${t.id}" title="Color">
+      <input type="text" class="status-name-input tag-name-input" value="${escapeHTML(t.name)}" data-id="${t.id}" maxlength="50" autocomplete="off">
+      <span class="tag-manage-usage">${count} title${count === 1 ? '' : 's'}</span>
+      <button type="button" class="btn btn-danger-ghost btn-sm tag-delete-btn" data-id="${t.id}" title="Delete tag">✕</button>
+    </div>
+  `;
+  }).join('');
+
+  container.querySelectorAll('.tag-color-input').forEach(input => {
+    input.addEventListener('change', () => saveTagEdit(parseInt(input.dataset.id)));
+  });
+  container.querySelectorAll('.tag-name-input').forEach(input => {
+    input.addEventListener('blur', () => saveTagEdit(parseInt(input.dataset.id)));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+  });
+  container.querySelectorAll('.tag-delete-btn').forEach(btn => {
+    const id = parseInt(btn.dataset.id);
+    const count = usage[id] || 0;
+    btn.addEventListener('click', () => deleteTag(id, count));
+  });
+}
+
+async function saveTagEdit(id) {
+  const row = document.querySelector(`#tag-manage-list .status-manage-row[data-id="${id}"]`);
+  if (!row) return;
+  const name = row.querySelector('.tag-name-input').value.trim();
+  const color = row.querySelector('.tag-color-input').value;
+  if (!name) return toast('Tag name is required', true);
+
+  try {
+    await window.api.tags.update(id, { name, color });
+    await loadTags();
+    await renderTagManageList();
+    toast('Tag updated');
+    if (el('view-library').classList.contains('active')) loadLibrary();
+    if (state.currentSeries) loadSeriesData(state.currentSeries.id).catch(() => { });
+  } catch (e) {
+    toast(e.message || 'Could not update tag', true);
+    renderTagManageList(); // revert the row to last-known-good values
+  }
+}
+
+function deleteTag(id, usageCount) {
+  const tag = state.allTags.find(t => t.id === id);
+  const name = tag ? tag.name : 'this tag';
+  const msg = usageCount > 0
+    ? `Delete "${name}"? It will be removed from ${usageCount} title${usageCount === 1 ? '' : 's'}. This can't be undone.`
+    : `Delete "${name}"?`;
+
+  confirmDelete(msg, async () => {
+    try {
+      await window.api.tags.delete(id);
+      await loadTags();
+      await renderTagManageList();
+      // Drop it from the active library filter too, so a deleted tag
+      // doesn't linger as an invisible, unmatchable filter selection.
+      if (state.filterTags.includes(name)) {
+        state.filterTags = state.filterTags.filter(n => n !== name);
+        updateFilterBadges();
+      }
+      toast('Tag deleted');
+      if (el('view-library').classList.contains('active')) loadLibrary();
+      if (state.currentSeries) loadSeriesData(state.currentSeries.id).catch(() => { });
+    } catch (e) {
+      toast(e.message || 'Could not delete tag', true);
+    }
+  });
 }
 
 // ─── Library Filter Dropdowns (Genres / Tags) ──────────────────────────────

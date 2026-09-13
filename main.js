@@ -153,14 +153,40 @@ async function rebuildLocalReplica() {
 }
 
 async function setupDatabase() {
+  if (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN) {
+    dialog.showErrorBox(
+      'Configuration Missing',
+      'TURSO_DATABASE_URL and/or TURSO_AUTH_TOKEN are not set. Check that a .env file exists next to package.json (dev) or in the app\'s resources folder (packaged build) with both values filled in.'
+    );
+    app.quit();
+    return;
+  }
   db = newDesktopClient();
   try {
     await bootstrapSchema();
   } catch (err) {
     console.error('[main] Schema bootstrap failed:', err);
-    if (!isLocalReplicaCorruptionError(err)) throw err;
-    await rebuildLocalReplica();
-    await bootstrapSchema(); // let a second failure surface for real
+    if (isLocalReplicaCorruptionError(err)) {
+      await rebuildLocalReplica();
+      await bootstrapSchema(); // let a second failure surface for real
+      return;
+    }
+    // DNS/network failures (ENOTFOUND, EAI_AGAIN, or the raw
+    // "No such host is known" text libsql surfaces on Windows) aren't
+    // recoverable by rebuilding the local replica — that just re-tries
+    // the same unreachable host. Show a clear message instead of letting
+    // this bubble up as an unhandled rejection that kills the process
+    // silently from the person's point of view.
+    const msg = String(err?.message || err || '');
+    if (/dns error|ENOTFOUND|EAI_AGAIN|No such host/i.test(msg)) {
+      dialog.showErrorBox(
+        'Can\'t Reach the Database',
+        'Myaarchive couldn\'t connect to the Turso database. Check your internet connection and that TURSO_DATABASE_URL in .env is correct, then restart the app.'
+      );
+      app.quit();
+      return;
+    }
+    throw err;
   }
 }
 
@@ -412,6 +438,9 @@ handle('libraries:reorder', (_, orderedIds) => dataLayer.libraries.reorder(db, r
 // ─── IPC: Tags (per-user) / Genres (shared) / Content Warnings (per-user) ──
 handle('tags:getAll', () => dataLayer.tags.getAll(db, requireUser()));
 handle('tags:create', (_, name) => dataLayer.tags.create(db, requireUser(), name));
+handle('tags:update', (_, id, d) => dataLayer.tags.update(db, requireUser(), id, d));
+handle('tags:delete', (_, id) => dataLayer.tags.delete(db, requireUser(), id));
+handle('tags:getUsageCounts', () => dataLayer.tags.getUsageCounts(db, requireUser()));
 handle('contentWarnings:getAll', () => dataLayer.contentWarnings.getAll(db, requireUser()));
 handle('contentWarnings:create', (_, name) => dataLayer.contentWarnings.create(db, requireUser(), name));
 handle('genres:getAll', () => dataLayer.genres.getAll(db));

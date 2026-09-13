@@ -1310,6 +1310,25 @@
     </div>
   </div>
 
+  <!-- Manage Tags -->
+  <div class="overlay hidden" id="overlay-manage-tags">
+    <div class="modal" id="modal-manage-tags">
+      <div class="modal-header">
+        <h2>Manage Tags</h2>
+        <button class="close-btn" data-close="overlay-manage-tags">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="form-hint" style="margin-bottom: 16px;">Changes save automatically. Deleting a tag removes it from
+          every title currently using it — this can't be undone. New tags are created from the Add/Edit Title form,
+          not here.</p>
+        <div id="tag-manage-list" class="status-manage-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-manage-tags">Done</button>
+      </div>
+    </div>
+  </div>
+
   <!-- More Filters -->
   <div class="overlay hidden" id="overlay-more-filters">
     <div class="modal modal-lg" id="modal-more-filters">
@@ -1563,6 +1582,19 @@
                 library.</div>
             </div>
             <button class="btn btn-secondary btn-sm" id="btn-open-manage-statuses">Manage…</button>
+          </div>
+        </div>
+
+        <!-- Tags -->
+        <div class="settings-section">
+          <div class="settings-section-title">Tags</div>
+          <div class="settings-row">
+            <div class="settings-row-text">
+              <div class="settings-row-label">Manage Tags</div>
+              <div class="settings-row-desc">Rename, recolor, or delete tags — fix typos or clean up ones you no
+                longer use. Deleting a tag removes it from every title currently using it.</div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-open-manage-tags">Manage…</button>
           </div>
         </div>
 
