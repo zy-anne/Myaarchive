@@ -115,6 +115,12 @@ contextBridge.exposeInMainWorld('api', {
     update: (id, d) => invoke('links:update', id, d),
     delete: (id) => invoke('links:delete', id),
   },
+  glossary: {
+    getBySeries: (sid) => invoke('glossary:getBySeries', sid),
+    add: (d) => invoke('glossary:add', d),
+    update: (id, d) => invoke('glossary:update', id, d),
+    delete: (id) => invoke('glossary:delete', id),
+  },
   files: {
     openImageDialog: () => invoke('files:openImageDialog'),
     openImagesDialog: () => invoke('files:openImagesDialog'),

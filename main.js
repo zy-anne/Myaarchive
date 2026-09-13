@@ -525,6 +525,12 @@ handle('links:add', (_, d) => dataLayer.links.add(db, d));
 handle('links:update', (_, id, d) => dataLayer.links.update(db, id, d));
 handle('links:delete', (_, id) => dataLayer.links.delete(db, id));
 
+// ─── IPC: Glossary (plain term/definition pairs, no storage involved) ────
+handle('glossary:getBySeries', (_, sid) => dataLayer.glossary.getBySeries(db, sid));
+handle('glossary:add', (_, d) => dataLayer.glossary.add(db, d));
+handle('glossary:update', (_, id, d) => dataLayer.glossary.update(db, id, d));
+handle('glossary:delete', (_, id) => dataLayer.glossary.delete(db, id));
+
 
 // ─── IPC: Images (covers, portraits, nav icons, gallery) — now R2-backed ───
 // `category` becomes the R2 key prefix (e.g. 'covers', 'char', 'gallery',

@@ -332,6 +332,9 @@
               <button class="tab" data-tab="files" id="tab-files">
                 Files <span class="tab-count" id="files-tab-count">0</span>
               </button>
+              <button class="tab" data-tab="glossary" id="tab-glossary">
+                Glossary <span class="tab-count" id="glossary-tab-count">0</span>
+              </button>
             </div>
           </div>
           <div id="pane-details" class="tab-pane active">
@@ -391,6 +394,13 @@
               <button class="btn btn-primary btn-sm" id="btn-add-file">+ Add File</button>
             </div>
             <div id="files-list" class="files-list"></div>
+          </div>
+          <!-- Glossary Tab -->
+          <div id="pane-glossary" class="tab-pane hidden">
+            <div class="pane-toolbar">
+              <button class="btn btn-primary btn-sm" id="btn-add-glossary-term">+ Add Term</button>
+            </div>
+            <div id="glossary-list" class="glossary-list"></div>
           </div>
         </div>
       </section>
@@ -1217,6 +1227,31 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" data-close="overlay-link">Cancel</button>
         <button class="btn btn-primary" id="btn-save-link">Save Link</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Glossary Term Form -->
+  <div class="overlay hidden" id="overlay-glossary-term">
+    <div class="modal modal-sm" id="modal-glossary-term">
+      <div class="modal-header">
+        <h2 id="modal-glossary-title">Add Term</h2>
+        <button class="close-btn" data-close="overlay-glossary-term">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="f-glossary-term">Term <span class="req">*</span></label>
+          <input id="f-glossary-term" type="text" placeholder="e.g. Qi Cultivation" maxlength="200" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label for="f-glossary-definition">Definition</label>
+          <textarea id="f-glossary-definition" rows="4" maxlength="3000"
+            placeholder="What does this term mean in this title?"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-close="overlay-glossary-term">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-glossary-term">Save Term</button>
       </div>
     </div>
   </div>

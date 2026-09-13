@@ -2196,6 +2196,53 @@ tbody tr:hover {
   flex-shrink: 0;
 }
 
+/* ── Glossary Tab ─────────────────────────────────────────────────────── */
+.glossary-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.glossary-entry {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  transition: border-color 0.15s;
+}
+
+.glossary-entry:hover {
+  border-color: var(--primary);
+}
+
+.glossary-entry-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.glossary-term {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.glossary-actions {
+  display: flex;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+
+.glossary-definition {
+  margin-top: var(--sp-2);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-main);
+  font-family: var(--font-ui);
+}
+
 /* ── Modals & Forms ──────────────────────────────────────────────────────── */
 .overlay {
   position: fixed;

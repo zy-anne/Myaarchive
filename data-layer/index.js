@@ -745,6 +745,29 @@ async function linksDelete(db, id) {
   await run(db, `DELETE FROM link_attachments WHERE id = ?`, [id]);
   return true;
 }
+// ─── Glossary (per-title terms & definitions) ──────────────────────────
+// Plain text pairs, no storage/R2 involved — same "no upload" shape as
+// link attachments above. Sorted alphabetically (not by creation order)
+// since a glossary is meant to be scanned/looked-up, not read in the
+// order entries were added.
+
+async function glossaryGetBySeries(db, seriesId) {
+  return q(db, `SELECT * FROM glossary_terms WHERE series_id = ? ORDER BY term COLLATE NOCASE`, [seriesId]);
+}
+async function glossaryAdd(db, d) {
+  const r = await run(db, `
+    INSERT INTO glossary_terms (series_id, term, definition) VALUES (?, ?, ?)
+  `, [d.series_id, d.term, d.definition || null]);
+  return Number(r.lastInsertRowid);
+}
+async function glossaryUpdate(db, id, d) {
+  await run(db, `UPDATE glossary_terms SET term=?, definition=? WHERE id=?`, [d.term, d.definition || null, id]);
+  return true;
+}
+async function glossaryDelete(db, id) {
+  await run(db, `DELETE FROM glossary_terms WHERE id = ?`, [id]);
+  return true;
+}
 
 // ─── Statuses (per-user, customizable reading statuses) ────────────────
 // series.status keeps storing the plain name (not a foreign key). Renaming
@@ -1132,6 +1155,15 @@ async function ensureCoreSchema(db) {
     )
   `);
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS glossary_terms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      series_id INTEGER NOT NULL,
+      term TEXT NOT NULL,
+      definition TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS series_groups (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       library_id INTEGER NOT NULL,
@@ -1358,6 +1390,7 @@ async function ensureIndexes(db) {
     `CREATE INDEX IF NOT EXISTS idx_gallery_series ON gallery_images(series_id)`,
     `CREATE INDEX IF NOT EXISTS idx_attachments_series ON attachments(series_id)`,
     `CREATE INDEX IF NOT EXISTS idx_links_series ON link_attachments(series_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_glossary_series ON glossary_terms(series_id)`,
     `CREATE INDEX IF NOT EXISTS idx_group_items_series ON series_group_items(series_id)`,
     `CREATE INDEX IF NOT EXISTS idx_libraries_owner ON libraries(owner_id)`,
   ];
@@ -1440,6 +1473,7 @@ async function accountDelete(db, ownerId) {
         await tx.execute({ sql: `DELETE FROM gallery_images WHERE series_id IN (${sph})`, args: seriesIds });
         await tx.execute({ sql: `DELETE FROM attachments WHERE series_id IN (${sph})`, args: seriesIds });
         await tx.execute({ sql: `DELETE FROM link_attachments WHERE series_id IN (${sph})`, args: seriesIds });
+        await tx.execute({ sql: `DELETE FROM glossary_terms WHERE series_id IN (${sph})`, args: seriesIds });
         await tx.execute({ sql: `DELETE FROM series_tags WHERE series_id IN (${sph})`, args: seriesIds });
         await tx.execute({ sql: `DELETE FROM series_genres WHERE series_id IN (${sph})`, args: seriesIds });
         await tx.execute({ sql: `DELETE FROM series_content_warnings WHERE series_id IN (${sph})`, args: seriesIds });
@@ -1520,5 +1554,6 @@ module.exports = {
   gallery: { getBySeries: galleryGetBySeries, add: galleryAdd, updateCaption: galleryUpdateCaption, delete: galleryDelete, reorder: galleryReorder },
   attachments: { getBySeries: attachmentsGetBySeries, add: attachmentsAdd, delete: attachmentsDelete },
   links: { getBySeries: linksGetBySeries, add: linksAdd, update: linksUpdate, delete: linksDelete },
+  glossary: { getBySeries: glossaryGetBySeries, add: glossaryAdd, update: glossaryUpdate, delete: glossaryDelete },
   account: { delete: accountDelete },
 };

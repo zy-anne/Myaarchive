@@ -8,6 +8,7 @@ let state = {
   galleryImages: [],
   attachments: [],
   linkAttachments: [],
+  glossaryTerms: [],
   currentGalleryImage: null,
   allTags: [],
   selectedTags: [],
@@ -93,20 +94,24 @@ const dom = {
   tabChars: el('tab-characters'),
   tabGallery: el('tab-gallery'),
   tabFiles: el('tab-files'),
+  tabGlossary: el('tab-glossary'),
   volCount: el('vol-tab-count'),
   charCount: el('char-tab-count'),
   galleryCount: el('gallery-tab-count'),
   filesCount: el('files-tab-count'),
+  glossaryCount: el('glossary-tab-count'),
   paneDetails: el('pane-details'),
   paneVols: el('pane-volumes'),
   paneChars: el('pane-characters'),
   paneGallery: el('pane-gallery'),
   paneFiles: el('pane-files'),
+  paneGlossary: el('pane-glossary'),
   volList: el('volumes-list'),
   charGrid: el('characters-grid'),
   charList: el('characters-list'),
   galleryGrid: el('gallery-grid'),
   filesList: el('files-list'),
+  glossaryList: el('glossary-list'),
 
   charDrawer: el('drawer-overlay'),
   drawerBody: el('drawer-body'),
@@ -1291,6 +1296,7 @@ function bindEvents() {
     state.filterYearMin = '';
     state.filterYearMax = '';
     state.filterBookTypes = [];
+    state.filterFandoms = [];
     state.filterLanguages = [];
     state.filterCountries = [];
     state.filterAuthors = [];
@@ -1435,6 +1441,7 @@ function bindEvents() {
   dom.tabChars.addEventListener('click', () => switchTab('characters'));
   dom.tabGallery.addEventListener('click', () => switchTab('gallery'));
   dom.tabFiles.addEventListener('click', () => switchTab('files'));
+  dom.tabGlossary.addEventListener('click', () => switchTab('glossary'));
 
   // Volume Actions
   el('btn-add-volume').addEventListener('click', () => openVolumeModal());
@@ -1515,6 +1522,8 @@ function bindEvents() {
 
   el('btn-add-link').addEventListener('click', () => openLinkModal());
   el('btn-save-link').addEventListener('click', saveLink);
+  el('btn-add-glossary-term').addEventListener('click', () => openGlossaryTermModal());
+  el('btn-save-glossary-term').addEventListener('click', saveGlossaryTerm);
 
   // Relationship Actions
   el('btn-add-rel-drawer').addEventListener('click', () => openRelModal());
@@ -1586,6 +1595,7 @@ const TAB_PANES = {
   characters: { tab: 'tabChars', pane: 'paneChars' },
   gallery: { tab: 'tabGallery', pane: 'paneGallery' },
   files: { tab: 'tabFiles', pane: 'paneFiles' },
+  glossary: { tab: 'tabGlossary', pane: 'paneGlossary' },
 };
 
 function switchTab(tab) {
@@ -3081,7 +3091,7 @@ async function loadSeriesData(id) {
   // instead of round-tripping one at a time. On a title with a lot of
   // volumes/characters/gallery images, this was a real chunk of the delay
   // between Save and the detail view actually refreshing.
-  const [s, volumes, characters, relationships, galleryImages, attachments, linkAttachments] = await Promise.all([
+  const [s, volumes, characters, relationships, galleryImages, attachments, linkAttachments, glossaryTerms] = await Promise.all([
     window.api.series.get(id),
     window.api.volumes.getBySeries(id),
     window.api.characters.getBySeries(id),
@@ -3089,6 +3099,7 @@ async function loadSeriesData(id) {
     window.api.gallery.getBySeries(id),
     window.api.attachments.getBySeries(id),
     window.api.links.getBySeries(id),
+    window.api.glossary.getBySeries(id),
   ]);
   state.currentSeries = s;
   state.volumes = volumes;
@@ -3097,12 +3108,14 @@ async function loadSeriesData(id) {
   state.galleryImages = galleryImages;
   state.attachments = attachments;
   state.linkAttachments = linkAttachments;
+  state.glossaryTerms = glossaryTerms;
   renderSeriesHero(s);
   renderCharacters();
   renderCharactersList();
   applyCharViewMode();
   renderGallery();
   renderFiles();
+  renderGlossary();
 
   const isStandalone = s.kind === 'standalone';
   el('tab-volumes-label').textContent = isStandalone ? 'Thoughts' : 'Volumes';
@@ -3122,6 +3135,7 @@ async function loadSeriesData(id) {
   dom.charCount.textContent = state.characters.length;
   dom.galleryCount.textContent = state.galleryImages.length;
   dom.filesCount.textContent = state.attachments.length + state.linkAttachments.length;
+  dom.glossaryCount.textContent = state.glossaryTerms.length;
 }
 
 function renderSeriesHero(s) {
@@ -5067,6 +5081,79 @@ function renderFiles() {
       });
     });
   });
+}
+
+// ─── Glossary ─────────────────────────────────────────────────────────────
+
+function renderGlossary() {
+  if (state.glossaryTerms.length === 0) {
+    dom.glossaryList.innerHTML = `<div class="empty-state"><h3>No terms yet</h3><p>Track in-world jargon, honorifics, or lore terms specific to this title.</p></div>`;
+    return;
+  }
+
+  dom.glossaryList.innerHTML = state.glossaryTerms.map(g => `
+    <div class="glossary-entry" data-id="${g.id}">
+      <div class="glossary-entry-header">
+        <span class="glossary-term">${escapeHTML(g.term)}</span>
+        <div class="glossary-actions">
+          <button class="btn btn-ghost btn-sm glossary-edit-btn" data-id="${g.id}">Edit</button>
+          <button class="btn btn-danger-ghost btn-sm glossary-delete-btn" data-id="${g.id}">Delete</button>
+        </div>
+      </div>
+      ${g.definition ? `<div class="glossary-definition">${nl2br(g.definition)}</div>` : ''}
+    </div>
+  `).join('');
+
+  dom.glossaryList.querySelectorAll('.glossary-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const term = state.glossaryTerms.find(g => g.id == btn.dataset.id);
+      if (term) openGlossaryTermModal(term);
+    });
+  });
+  dom.glossaryList.querySelectorAll('.glossary-delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const term = state.glossaryTerms.find(g => g.id == btn.dataset.id);
+      if (!term) return;
+      confirmDelete(`Delete "${term.term}"?`, async () => {
+        await window.api.glossary.delete(term.id);
+        toast('Term deleted');
+        await loadSeriesData(state.currentSeries.id);
+      });
+    });
+  });
+}
+
+let editingGlossaryTerm = null;
+
+function openGlossaryTermModal(term = null) {
+  editingGlossaryTerm = term;
+  el('modal-glossary-title').textContent = term ? 'Edit Term' : 'Add Term';
+  el('f-glossary-term').value = term?.term || '';
+  el('f-glossary-definition').value = term?.definition || '';
+  openModal('overlay-glossary-term');
+  el('f-glossary-term').focus();
+}
+
+async function saveGlossaryTerm() {
+  const termText = el('f-glossary-term').value.trim();
+  if (!termText) return toast('Term is required', true);
+
+  const d = {
+    series_id: state.currentSeries.id,
+    term: termText,
+    definition: el('f-glossary-definition').value.trim(),
+  };
+
+  if (editingGlossaryTerm) {
+    await window.api.glossary.update(editingGlossaryTerm.id, d);
+    toast('Term updated');
+  } else {
+    await window.api.glossary.add(d);
+    toast('Term added');
+  }
+  editingGlossaryTerm = null;
+  closeModal('overlay-glossary-term');
+  await loadSeriesData(state.currentSeries.id);
 }
 
 let editingLink = null;
