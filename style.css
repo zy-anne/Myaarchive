@@ -1099,6 +1099,10 @@ a:focus-visible,
   padding: 4px;
 }
 
+#overlay-more-filters .form-row {
+  align-items: flex-start;
+}
+
 .more-filter-actions {
   display: flex;
   justify-content: flex-end;
