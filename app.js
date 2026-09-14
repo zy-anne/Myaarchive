@@ -51,6 +51,7 @@ let state = {
   theme: 'dark',
   colorTheme: 'default', // 'default' | 'pink' | 'purple' | 'green-latte' | 'saffron' — persisted via settings (colorTheme)
   autoHideSidebar: false,  // boolean — persisted via settings (autoHideSidebar)
+  openDetailAfterAdd: false, // boolean — persisted via settings (openDetailAfterAdd); default false = stay in library after adding a new title (prior/existing behavior)
   showNsfwContent: true,   // boolean — persisted via settings (showNsfwContent); default true so nothing hides for existing users until they opt out
   groupsSectionCollapsed: false, // boolean — persisted via settings (groupsSectionCollapsed)
   charDrawerRelsCollapsed: false, // boolean — persisted via settings (charRelsSectionCollapsed)
@@ -665,6 +666,7 @@ async function loadSettings() {
   state.theme = settings.theme === 'light' ? 'light' : 'dark';
   state.colorTheme = COLOR_THEMES.some(t => t.id === settings.colorTheme) ? settings.colorTheme : 'default';
   state.autoHideSidebar = settings.autoHideSidebar === 'true';
+  state.openDetailAfterAdd = settings.openDetailAfterAdd === 'true';
   state.showNsfwContent = settings.showNsfwContent !== 'false'; // opt-out: absent/anything but 'false' = shown
   state.groupsSectionCollapsed = settings.groupsSectionCollapsed === 'true';
   state.charDrawerRelsCollapsed = settings.charRelsSectionCollapsed === 'true';
@@ -752,10 +754,12 @@ async function setSidebarAutoHide(enabled) {
   toast(state.autoHideSidebar ? 'Auto-hide categories enabled' : 'Auto-hide categories disabled');
 }
 
-// Global content preference (distinct from the per-search "NSFW: Yes/No"
-// facet in More Filters — that's a one-off query filter; this is a
-// persistent baseline that hides NSFW titles from the library entirely
-// until turned back on). Applied client-side in applyClientFilters().
+async function setOpenDetailAfterAdd(enabled) {
+  state.openDetailAfterAdd = !!enabled;
+  await window.api.settings.set('openDetailAfterAdd', state.openDetailAfterAdd ? 'true' : 'false');
+  toast(state.openDetailAfterAdd ? "Will open a title's page after adding" : 'Will stay in library after adding');
+}
+
 async function setShowNsfwContent(enabled) {
   state.showNsfwContent = !!enabled;
   await window.api.settings.set('showNsfwContent', state.showNsfwContent ? 'true' : 'false');
@@ -775,6 +779,9 @@ async function openUserSettingsModal() {
 
   const nsfwCheckbox = el('setting-show-nsfw');
   if (nsfwCheckbox) nsfwCheckbox.checked = !!state.showNsfwContent;
+
+  const openDetailCheckbox = el('setting-open-detail-after-add');
+  if (openDetailCheckbox) openDetailCheckbox.checked = !!state.openDetailAfterAdd;
 
   document.querySelectorAll('#settings-theme-chips .type-chip').forEach(c => {
     c.classList.toggle('active', c.dataset.theme === state.theme);
@@ -1058,6 +1065,10 @@ function bindEvents() {
 
   el('setting-autohide-sidebar')?.addEventListener('change', (e) => {
     setSidebarAutoHide(e.target.checked);
+  });
+
+  el('setting-open-detail-after-add')?.addEventListener('change', (e) => {
+    setOpenDetailAfterAdd(e.target.checked);
   });
 
   document.querySelectorAll('#settings-theme-chips .type-chip').forEach(chip => {
@@ -4227,7 +4238,6 @@ async function saveSeries() {
       ? state.currentSeries.chapter_thoughts
       : null,
     cover_image_path: el('f-s-kind').value === 'standalone' ? (el('f-s-cover').value || null) : null,
-    // Additional details (all optional)
     rating: parseInt(el('f-s-rating').value) || 0,
     book_type: el('f-s-booktype').value.trim(),
     fandom: el('f-s-booktype').value.trim().toLowerCase() === 'fanfic' ? (state.selectedFandoms.join(', ') || null) : null,
@@ -4268,18 +4278,17 @@ async function saveSeries() {
       loadSeriesData(state.currentSeries.id);
     }
   } else {
-    await window.api.series.create(d);
+    const newId = await window.api.series.create(d);
     toast('Title added');
     closeModal('overlay-series');
     if (selectedLibId !== state.currentLibraryId) {
       await loadLibraries();
       switchLibrary(selectedLibId);
     }
+    if (state.openDetailAfterAdd) {
+      await openSeriesDetail(newId);
+    }
   }
-  // Book Type no longer re-fetches this user's entire library (across
-  // every category) just to recompute the autocomplete list — we already
-  // know the exact value that was just saved, so fold it into the
-  // in-memory list directly instead.
   if (d.book_type && !state.allBookTypes.includes(d.book_type)) {
     state.allBookTypes.push(d.book_type);
   }
@@ -4288,9 +4297,7 @@ async function saveSeries() {
       if (!state.allFandoms.includes(f)) state.allFandoms.push(f);
     });
   }
-  loadTags();
-  loadGenres();
-  loadContentWarnings();
+  await Promise.all([loadTags(), loadGenres(), loadContentWarnings()]);
   if (el('view-library').classList.contains('active')) loadLibrary();
 }
 
