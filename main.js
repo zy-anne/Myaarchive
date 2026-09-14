@@ -117,6 +117,7 @@ async function bootstrapSchema() {
   // (series) and per-volume publication date (volumes). Both are additive
   // ALTER TABLE migrations — safe to run on every launch.
   await dataLayer.ensureSeriesExtraColumns(db);
+  await dataLayer.ensureSeriesCreatedAtColumn(db);
   await dataLayer.ensureVolumesExtraColumns(db);
   await dataLayer.ensureCharacterExtraColumns(db);
 }

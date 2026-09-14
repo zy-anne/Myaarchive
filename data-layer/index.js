@@ -415,8 +415,8 @@ async function seriesCreate(db, ownerId, data) {
                 title, author, status, synopsis, library_id, kind, overall_thoughts, chapter_thoughts, cover_image_path,
                 book_type, rating, original_language, country_of_origin, language_read, artist, year_published,
                 date_started, date_finished, status_country_of_origin, licensed_english, completely_translated,
-                original_publisher, english_publisher, is_nsfw, standalone_chapter_count, fandom
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                original_publisher, english_publisher, is_nsfw, standalone_chapter_count, fandom, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       args: [
         data.title, data.author || null, data.status || 'Planning', data.synopsis || null, data.library_id,
         data.kind || 'series', data.overall_thoughts || null, data.chapter_thoughts || null, data.cover_image_path || null,
@@ -1384,6 +1384,21 @@ async function ensureSeriesExtraColumns(db) {
   } catch { /* no series table yet — nothing to migrate */ }
 }
 
+async function ensureSeriesCreatedAtColumn(db) {
+  try {
+    const info = await db.execute(`PRAGMA table_info(series)`);
+    const existing = new Set(info.rows.map(r => r.name));
+    if (!existing.has('created_at')) {
+      // No default here deliberately — SQLite's ALTER TABLE ADD COLUMN
+      // rejects non-constant defaults like datetime('now'). New rows get
+      // stamped explicitly in seriesCreate's INSERT instead (see below).
+      // Existing rows stay NULL — sorted as "oldest" by date-added sort,
+      // same convention as unset date_started/date_finished.
+      await db.execute(`ALTER TABLE series ADD COLUMN created_at TEXT`);
+    }
+  } catch { /* no series table yet — nothing to migrate */ }
+}
+
 async function ensureVolumesExtraColumns(db) {
   try {
     const info = await db.execute(`PRAGMA table_info(volumes)`);
@@ -1570,6 +1585,7 @@ module.exports = {
   ensureDefaultStatusesForUser,
   ensureCoreSchema,
   ensureSeriesExtraColumns,
+  ensureSeriesCreatedAtColumn,
   ensureVolumesExtraColumns,
   ensureCharacterExtraColumns,
   ensureIndexes,

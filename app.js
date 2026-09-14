@@ -1790,11 +1790,9 @@ function applyClientFilters(list) {
 // clicking a column header can just re-sort the already-filtered
 // state.series in place (see applySort()) without re-running every filter
 // predicate or re-fetching from the IPC layer.
-const SORTABLE_FIELDS = ['title', 'author', 'rating', 'year_published', 'date_started', 'date_finished'];
+const SORTABLE_FIELDS = ['title', 'author', 'rating', 'year_published', 'date_started', 'date_finished', 'date_added'];
 
-// Fields that default to descending (newest/highest first) the first time
-// they're selected, rather than ascending (A→Z / oldest first).
-const DESCENDING_BY_DEFAULT = ['rating', 'year_published', 'date_started', 'date_finished'];
+const DESCENDING_BY_DEFAULT = ['rating', 'year_published', 'date_started', 'date_finished', 'date_added'];
 
 function sortSeriesList(list) {
   const field = SORTABLE_FIELDS.includes(state.sortField) ? state.sortField : 'title';
@@ -1819,17 +1817,18 @@ function sortSeriesList(list) {
       // Same stable, direction-independent tie-break as rating.
       return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
     }
-    if (field === 'date_started' || field === 'date_finished') {
-      // Stored as ISO date strings (YYYY-MM-DD) from <input type="date">.
-      // Coerce to a timestamp for sorting; titles with no date set sort as
-      // 0 (oldest/lowest), same "unset" handling as rating/year above.
-      const at = a[field] ? new Date(a[field]).getTime() : 0;
-      const bt = b[field] ? new Date(b[field]).getTime() : 0;
+    // ↓↓↓ THIS is the block that gets replaced ↓↓↓
+    if (field === 'date_started' || field === 'date_finished' || field === 'date_added') {
+      // date_added has no matching state field name — it reads from created_at.
+      const key = field === 'date_added' ? 'created_at' : field;
+      const at = a[key] ? new Date(a[key]).getTime() : 0;
+      const bt = b[key] ? new Date(b[key]).getTime() : 0;
       const diff = (at || 0) - (bt || 0);
       if (diff !== 0) return diff * dir;
       // Same stable, direction-independent tie-break as rating/year.
       return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
     }
+    // ↑↑↑ end replaced block ↑↑↑
     const av = (a[field] || '').toString();
     const bv = (b[field] || '').toString();
     return av.localeCompare(bv, undefined, { sensitivity: 'base' }) * dir;
