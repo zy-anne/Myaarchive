@@ -139,6 +139,27 @@
    The default/"Twilight Reading Room" palette needs no block of its own;
    it's just whatever :root already defines. */
 
+:root {
+  --ring: color-mix(in srgb, var(--text-main) 10%, transparent);
+  --ring-hover: color-mix(in srgb, var(--primary) 55%, transparent);
+  --shadow-card:
+    0 0 0 1px var(--ring),
+    0 1px 2px rgba(7, 7, 42, 0.06),
+    0 4px 12px rgba(7, 7, 42, 0.05);
+  --shadow-card-hover:
+    0 0 0 1px var(--ring-hover),
+    0 2px 4px rgba(7, 7, 42, 0.08),
+    0 10px 24px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+[data-theme="dark"] {
+  --ring: color-mix(in srgb, var(--white) 10%, transparent);
+  --shadow-card:
+    0 0 0 1px var(--ring),
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
 [data-color-theme="pink"] {
   /* "Pink Lemonade Bliss" */
   --frost-fairy: #f7d6e1;
@@ -228,6 +249,8 @@ body {
   overflow: hidden;
   font-size: 14px;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 h1,
@@ -2882,7 +2905,7 @@ select option:focus {
   border-radius: 4px;
   white-space: nowrap;
   z-index: 2;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 6px rgba(164, 82, 82, 0.25);
   max-width: 90%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2891,7 +2914,7 @@ select option:focus {
 .lore-portrait-img-wrap {
   width: 100%;
   height: 175px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--surface);
   background-size: cover;
   background-position: center;
@@ -3755,7 +3778,7 @@ input[type="color"] {
   z-index: 1000;
   transform: translateY(100px);
   opacity: 0;
-  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease-out;
   font-family: var(--font-ui);
   font-weight: 500;
   max-width: min(360px, calc(100vw - 48px));
@@ -5614,4 +5637,281 @@ a,
   width: auto;
   padding: 2px 6px;
   font-size: 13px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Interface polish pass
+   Everything below overrides earlier rules by coming last. Delete this
+   whole block to revert.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Typography ─────────────────────────────────────────────────────── */
+h1,
+h2,
+h3,
+.hero-title,
+.modal-header h2,
+.empty-state h3,
+.stats-milestone-title,
+.lore-title {
+  text-wrap: balance;
+}
+
+.hero-synopsis,
+.vol-detail-text,
+.glossary-definition,
+.umbrella-group-desc,
+.empty-state p,
+.lore-notes-body,
+.lore-contrast-line,
+.lore-personality-text,
+.timeline-card,
+.form-hint,
+.settings-row-desc,
+.rel-notes {
+  text-wrap: pretty;
+}
+
+/* Numbers that change (stats, counters) must not shift layout */
+.count-badge,
+.tab-count,
+.filter-count,
+.char-counter,
+.series-card-count,
+.stat-card-value,
+.stat-card-sm .stat-card-value,
+.stats-milestone-num,
+.stats-milestone-goal,
+.stats-milestone-pct,
+.stats-bar-count,
+.stats-year-count,
+.stats-week-count,
+.stats-mini-num,
+.stats-velocity-value,
+.stats-pace-badge,
+.heatmap-cell,
+.tag-manage-usage,
+.file-meta {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Transitions: no `transition: all` ──────────────────────────────── */
+.btn,
+.nav-item,
+.nav-add-library,
+.filter-btn,
+.filter-mode-btn,
+.type-chip,
+.btn-icon-edit,
+.icon-swatch,
+.view-toggle-btn,
+.char-picker-item,
+.btn-sidebar-toggle,
+.btn-deep-dive,
+.win-btn,
+.theme-swatch {
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity;
+  transition-duration: 0.15s;
+  transition-timing-function: ease-out;
+}
+
+.character-card,
+.character-list-row,
+.sub-book-card,
+.umbrella-group-card,
+.file-row,
+.glossary-entry,
+.gallery-card {
+  transition-property: box-shadow, transform, border-color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease-out;
+}
+
+/* Spring overshoot on the hero cover → plain ease-out */
+.hero-cover-wrap {
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ── Scale on press (0.96 everywhere, never on disabled) ────────────── */
+:is(.btn, .filter-btn, .filter-mode-btn, .type-chip, .nav-add-library,
+  .view-toggle-btn, .win-btn, .btn-sidebar-toggle, .btn-deep-dive):active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* ── Optical alignment: a leading icon makes padding look heavier ───── */
+.btn:has(> svg:first-child) {
+  padding-left: 13px;
+}
+
+.btn-sm:has(> svg:first-child) {
+  padding-left: 10px;
+}
+
+/* ── Shadows for depth, borders only for structure ──────────────────── */
+.character-card,
+.character-list-row,
+.gallery-card,
+.sub-book-card,
+.file-row,
+.glossary-entry,
+.stat-card,
+.stats-compact-cell,
+.stats-milestone-card,
+.stats-heatmap-card {
+  border-color: transparent;
+  /* keeps the 1px so layout doesn't shift */
+  box-shadow: var(--shadow-card);
+}
+
+.character-card:hover,
+.character-list-row:hover,
+.gallery-card:hover,
+.sub-book-card:hover,
+.file-row:hover,
+.glossary-entry:hover {
+  border-color: transparent;
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* ── Concentric radius (outer = inner + padding) ────────────────────── */
+.filter-dropdown-panel {
+  border-radius: calc(var(--radius-sm) + var(--sp-2));
+}
+
+.modal-header {
+  border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0;
+}
+
+.modal-footer {
+  border-radius: 0 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px);
+}
+
+/* ── Image outlines (pure black light / pure white dark) ────────────── */
+.series-card-cover img,
+.hero-cover-img,
+.gallery-card-img,
+.vol-detail-cover,
+.vol-note-cover img,
+.char-avatar img,
+.character-list-avatar img,
+.gallery-detail-img,
+.standalone-cover-img,
+.nav-icon-img {
+  outline: 1px solid oklch(0 0 0 / 0.1);
+  outline-offset: -1px;
+}
+
+[data-theme="dark"] :is(.series-card-cover img, .hero-cover-img, .gallery-card-img,
+  .vol-detail-cover, .vol-note-cover img, .char-avatar img,
+  .character-list-avatar img, .gallery-detail-img, .standalone-cover-img,
+  .nav-icon-img) {
+  outline-color: oklch(1 0 0 / 0.1);
+}
+
+.lightbox-img {
+  outline: 1px solid oklch(1 0 0 / 0.1);
+  outline-offset: -1px;
+}
+
+/* always on a dark backdrop */
+
+/* ── Hit areas: extend small controls without changing their look ───── */
+.win-btn,
+.close-btn,
+.btn-icon-edit,
+.tag-chip-remove,
+.group-item-remove-btn {
+  position: relative;
+}
+
+.win-btn::after {
+  content: '';
+  position: absolute;
+  inset: -6px -2px;
+}
+
+/* 28px → 40px tall, no overlap with neighbours */
+.close-btn::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+.btn-icon-edit::after,
+.nav-customize-btn::after,
+.group-item-remove-btn::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+.tag-chip-remove::after {
+  content: '';
+  position: absolute;
+  inset: -8px -6px;
+}
+
+/* ── Icons: stroke weight matches 500-weight text ───────────────────── */
+.nav-item svg {
+  stroke-width: 1.75;
+}
+
+/* Theme toggle: both icons stay in the DOM and cross-fade */
+.icon-swap {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.icon-swap svg {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: scale(0.25);
+  filter: blur(4px);
+  transition-property: opacity, transform, filter;
+  transition-duration: 0.3s;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+[data-theme="dark"] .icon-swap .icon-moon,
+[data-theme="light"] .icon-swap .icon-sun {
+  opacity: 0.7;
+  transform: none;
+  filter: blur(0);
+}
+
+/* ── Modals: short fade + 6px rise (no scale, graph modal is fullscreen) ─ */
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.overlay:not(.hidden) {
+  animation: overlay-in 0.15s ease-out;
+}
+
+.overlay:not(.hidden)>.modal {
+  animation: modal-in 0.18s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ── Respect reduced-motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

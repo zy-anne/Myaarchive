@@ -685,7 +685,6 @@ async function loadSettings() {
 
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', state.theme);
-  el('theme-toggle-icon').innerHTML = THEME_ICONS[state.theme];
   el('theme-toggle-label').textContent = state.theme === 'dark' ? 'Dark Mode' : 'Light Mode';
   document.querySelectorAll('#settings-theme-chips .type-chip').forEach(c => {
     c.classList.toggle('active', c.dataset.theme === state.theme);
