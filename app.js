@@ -865,7 +865,7 @@ function updateChangePasswordButtonState() {
   // actually be seen — Save just silently wouldn't click.
   errorEl.textContent = (confirm.length > 0 && next !== confirm) ? "New passwords don't match" : '';
 
-  const valid = current.length > 0 && next.length >= 4 && next === confirm;
+  const valid = current.length > 0 && next.length >= 8 && next === confirm;
   el('btn-confirm-change-password').disabled = !valid;
 }
 
@@ -3293,7 +3293,7 @@ function renderHeroDetailsColumns(s) {
       : item.statusBadge
         ? `<span class="status-badge" style="color:${statusColor(item.statusBadge)}">${escapeHTML(item.statusBadge)}</span>`
         : item.editableDateField
-          ? `<span class="hero-extra-value hero-extra-value-editable" data-date-field="${item.editableDateField}" data-raw-date="${item.rawDate}" title="Click to change">${escapeHTML(item.value)} ✎</span>`
+          ? `<span class="hero-extra-value hero-extra-value-editable" data-date-field="${item.editableDateField}" data-raw-date="${escapeHTML(item.rawDate)}" title="Click to change">${escapeHTML(item.value)} ✎</span>`
           : `<span class="hero-extra-value">${escapeHTML(item.value)}</span>`}
     </div>
   `).join('');
@@ -3478,7 +3478,7 @@ async function loadStatuses() {
 // a status that was deleted after some titles were already set to it.
 function statusColor(name) {
   const s = state.allStatuses.find(st => st.name.toLowerCase() === (name || '').toLowerCase());
-  return s ? s.color : 'var(--text-muted)';
+  return s && /^#[0-9a-f]{6}$/i.test(s.color) ? s.color : 'var(--text-muted)';
 }
 
 function resolveFinishedStatusName() {
@@ -4415,7 +4415,7 @@ function renderVolumes() {
 
     return `
             <div class="volume-card" data-id="${v.id}" style="background:${color}">
-              <div class="vol-note-label">Vol. ${v.volume_number}${v.date_read ? ` · ${formatDate(v.date_read)}` : ''}</div>
+              <div class="vol-note-label">Vol. ${escapeHTML(String(v.volume_number))}${v.date_read ? ` · ${formatDate(v.date_read)}` : ''}</div>
               ${v.cover_image_path ? `<div class="vol-note-cover"><img data-key="${escapeHTML(v.cover_image_path)}" alt="Cover"></div>` : ''}
               <div class="vol-note-body">${bodyText}</div>
               ${metaBits.length ? `<div class="vol-note-meta">${metaBits.join(' · ')}</div>` : ''}
@@ -4611,7 +4611,7 @@ function renderCharacters() {
                 ${c.profile_image_path ? `<img data-key="${escapeHTML(c.profile_image_path)}" alt="${escapeHTML(c.name)}">` : `<span class="char-avatar-fallback">${c.name.charAt(0).toUpperCase()}</span>`}
               </div>
               <div class="char-name">${escapeHTML(c.name)}</div>
-              <div class="char-role ${c.role.toLowerCase()}">${escapeHTML(c.role)}</div>
+              <div class="char-role ${escapeHTML(c.role.toLowerCase())}">${escapeHTML(c.role)}</div>
               ${c.life_status ? `<div class="char-life-status ${lifeStatusClass(c.life_status)}">${escapeHTML(c.life_status)}</div>` : ''}
             </div>
             `).join('');
@@ -4654,7 +4654,7 @@ function renderCharactersList() {
                 <div class="character-list-meta">${[c.age ? `Age ${escapeHTML(c.age)}` : '', c.volume_appearances ? escapeHTML(c.volume_appearances) : noAppearancesText].filter(Boolean).join(' · ')}</div>
               </div>
               ${c.life_status ? `<span class="char-life-status ${lifeStatusClass(c.life_status)}">${escapeHTML(c.life_status)}</span>` : ''}
-              <span class="char-role ${c.role.toLowerCase()}">${escapeHTML(c.role)}</span>
+              <span class="char-role ${escapeHTML(c.role.toLowerCase())}">${escapeHTML(c.role)}</span>
             </div>
             `).join('');
 

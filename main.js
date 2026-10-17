@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, safeStorage, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -11,12 +11,12 @@ require('dotenv').config({
     : path.join(__dirname, '.env'),
 });
 
-// Line 14 in main.js:
 const { createDesktopClient, removeLocalReplicaFiles } = require('./data-layer/client');
 const dataLayer = require('./data-layer');
 const { ensureUsersTable, signUp, signIn, userExists, verifyPassword, changePassword, ensureSecurityQuestionColumns, getSecurityQuestion, resetPasswordWithSecurityAnswer, getOwnSecurityQuestion, setSecurityQuestion } = require('./auth/localAuth.js');
 const { createR2Client, makeKey, uploadBuffer, deleteObject, downloadBuffer } = require('./storage/r2');
 const { getOrDownload, evictIfOverLimit } = require('./storage/cache');
+const { httpUrl: validateHttpUrl } = require('./data-layer/validate');
 
 let mainWindow;
 let db;                 // libSQL client (Turso embedded replica)
@@ -39,8 +39,28 @@ const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENT_SIZE_BYTES = 100 * 1024 * 1024;
 const formatMB = (bytes) => `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 
+const ALLOWED_IMAGE_CATEGORIES = new Set(['series', 'vol', 'char', 'gallery', 'navicon']);
+const IMAGE_KEY_RE = /^(series|vol|char|gallery|navicon)\/[0-9a-f-]{36}(\.[a-z0-9]{1,8})?$/i;
+const ATTACH_KEY_RE = /^attachments\/\d+\/[0-9a-f-]{36}(\.[a-z0-9]{1,8})?$/i;
+const RISKY_OPEN_EXTS = new Set(['.exe', '.bat', '.cmd', '.com', '.msi', '.scr', '.ps1', '.vbs', '.js', '.jse',
+  '.wsf', '.lnk', '.jar', '.reg', '.hta', '.dll', '.cpl']);
+const EXT_BY_MIME = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' };
+
+function sniffImageMime(buf) {
+  if (buf.length < 12) return null;
+  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return 'image/jpeg';
+  if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))) return 'image/png';
+  if (buf.subarray(0, 4).toString('ascii') === 'GIF8') return 'image/gif';
+  if (buf.subarray(0, 4).toString('ascii') === 'RIFF' && buf.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  return null;
+}
+function isInside(root, target) {
+  const r = path.resolve(root) + path.sep;
+  return path.resolve(target).startsWith(r);
+}
+
 const imageDataUrlCache = new Map();
-const IMAGE_DATA_URL_CACHE_MAX = 300;
+const IMAGE_DATA_URL_CACHE_MAX = 60;
 
 function getCachedImageDataUrl(key) {
   const cached = imageDataUrlCache.get(key);
@@ -167,6 +187,11 @@ async function setupDatabase() {
     app.quit();
     return;
   }
+  if (!/^(libsql|https|wss):\/\//i.test(process.env.TURSO_DATABASE_URL)) {
+    dialog.showErrorBox('Insecure Configuration', 'TURSO_DATABASE_URL must use libsql://, https:// or wss://.');
+    app.quit();
+    return;
+  }
   db = newDesktopClient();
   try {
     await bootstrapSchema();
@@ -212,11 +237,19 @@ async function withDbRecovery(fn) {
   }
 }
 
+function assertTrustedSender(event) {
+  const url = event.senderFrame?.url || '';
+  if (!url.startsWith('file://')) throw new Error('Untrusted sender');
+}
+
 // Thin wrapper around ipcMain.handle that routes the handler body through
 // withDbRecovery. Used for every handler that (directly or via dataLayer)
 // touches `db`.
 function handle(channel, fn) {
-  ipcMain.handle(channel, (event, ...args) => withDbRecovery(() => fn(event, ...args)));
+  ipcMain.handle(channel, (event, ...args) => {
+    assertTrustedSender(event);
+    return withDbRecovery(() => fn(event, ...args));
+  });
 }
 
 // ─── Session persistence (encrypted at rest via OS keychain) ─────────────
@@ -225,13 +258,19 @@ function handle(channel, fn) {
 // user id still exist in the DB last we checked" (re-verified at launch
 // via userExists()).
 
+const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
 function saveSession(user) {
   if (!safeStorage.isEncryptionAvailable()) return; // falls back to re-login every launch
-  fs.writeFileSync(getSessionPath(), safeStorage.encryptString(JSON.stringify(user)));
+  fs.writeFileSync(getSessionPath(), safeStorage.encryptString(JSON.stringify({ ...user, savedAt: Date.now() })));
 }
 function loadSession() {
   if (!fs.existsSync(getSessionPath()) || !safeStorage.isEncryptionAvailable()) return null;
-  try { return JSON.parse(safeStorage.decryptString(fs.readFileSync(getSessionPath()))); } catch { return null; }
+  try {
+    const s = JSON.parse(safeStorage.decryptString(fs.readFileSync(getSessionPath())));
+    if (!s.savedAt || Date.now() - s.savedAt > SESSION_MAX_AGE_MS) return null;
+    return { id: s.id, username: s.username };
+  } catch { return null; }
 }
 function clearSession() {
   if (fs.existsSync(getSessionPath())) fs.unlinkSync(getSessionPath());
@@ -252,6 +291,24 @@ if (!gotLock) {
   });
 }
 
+// ─── Auth throttling (in-memory; resets on restart) ────────────────────
+const authFailures = new Map();
+const throttleKey = (kind, id) => `${kind}:${String(id || '').trim().toLowerCase()}`;
+
+function checkThrottle(key) {
+  const rec = authFailures.get(key);
+  if (rec && rec.lockedUntil > Date.now()) {
+    throw new Error(`Too many attempts. Try again in ${Math.ceil((rec.lockedUntil - Date.now()) / 1000)}s.`);
+  }
+}
+function recordFailure(key) {
+  const rec = authFailures.get(key) || { count: 0, lockedUntil: 0 };
+  rec.count++;
+  if (rec.count >= 5) rec.lockedUntil = Date.now() + Math.min(15 * 60_000, 30_000 * 2 ** (rec.count - 5));
+  authFailures.set(key, rec);
+}
+const clearFailures = (key) => authFailures.delete(key);
+
 // ─── Auth flow ────────────────────────────────────────────────────────────
 // One shared Turso database + one shared R2 bucket for every account (the
 // admin — you — owns both, baked into the packaged app's .env). Isolation
@@ -271,38 +328,49 @@ handle('auth:signUp', async (_, username, password, securityQuestion, securityAn
   }
 });
 handle('auth:signIn', async (_, username, password) => {
+  const key = throttleKey('signin', username);
   try {
+    checkThrottle(key);
     const user = await signIn(db, username, password);
+    clearFailures(key);
     currentUser = user;
     saveSession(user);
     await ensureDefaultLibrary(user.id);
     await dataLayer.ensureDefaultStatusesForUser(db, user.id);
     return { ok: true, user };
   } catch (e) {
+    if (/Invalid username or password/.test(e.message)) recordFailure(key);
     return { ok: false, error: e.message };
   }
 });
-ipcMain.handle('auth:signOut', () => {
+ipcMain.handle('auth:signOut', (event) => {
+  assertTrustedSender(event);
   clearSession();
   currentUser = null;
 });
-ipcMain.handle('auth:currentUser', () => currentUser);
+ipcMain.handle('auth:currentUser', (event) => {
+  assertTrustedSender(event);
+  return currentUser;
+});
 
 // ─── Password Recovery (public — no sign-in required) ───────────────────
 handle('auth:getSecurityQuestion', async (_, username) => {
   try {
     const question = await getSecurityQuestion(db, username);
-    if (!question) return { ok: false, error: 'No recovery method is set up for this account' };
     return { ok: true, question };
   } catch (e) {
     return { ok: false, error: e.message };
   }
 });
 handle('auth:resetPassword', async (_, username, answer, newPassword) => {
+  const key = throttleKey('reset', username);
   try {
+    checkThrottle(key);
     await resetPasswordWithSecurityAnswer(db, username, answer, newPassword);
+    clearFailures(key);
     return { ok: true };
   } catch (e) {
+    if (/incorrect/i.test(e.message)) recordFailure(key);
     return { ok: false, error: e.message };
   }
 });
@@ -312,6 +380,17 @@ function requireUser() {
   return currentUser.id;
 }
 
+const owned = {
+  series: (id) => dataLayer.guards.series(db, requireUser(), id),
+  child: (table, id) => dataLayer.guards.child(db, requireUser(), table, id),
+  relationship: (id) => dataLayer.guards.relationship(db, requireUser(), id),
+};
+async function deleteUnreferencedKeys(keys) {
+  for (const k of keys) {
+    try { if (!(await dataLayer.isKeyReferenced(db, k))) await deleteObject(s3, process.env.R2_BUCKET_NAME, k); } catch { /* orphan is non-fatal */ }
+  }
+}
+
 // ─── IPC: Account (Change Password & Danger Zone) ───────────────────────
 // Change Password is the only supported way to update a password
 // post sign-up — previously there was no path short of editing the users
@@ -319,10 +398,14 @@ function requireUser() {
 // person is already signed in, same rationale as account:delete below.
 handle('account:changePassword', async (_, currentPassword, newPassword) => {
   const userId = requireUser();
+  const key = throttleKey('pw', userId);
   try {
+    checkThrottle(key);
     await changePassword(db, userId, currentPassword, newPassword);
+    clearFailures(key);
     return { ok: true };
   } catch (e) {
+    if (/incorrect/i.test(e.message)) recordFailure(key);
     return { ok: false, error: e.message };
   }
 });
@@ -334,10 +417,14 @@ handle('account:getSecurityQuestion', async () => {
 });
 handle('account:setSecurityQuestion', async (_, currentPassword, question, answer) => {
   const userId = requireUser();
+  const key = throttleKey('pw', userId);
   try {
+    checkThrottle(key);
     await setSecurityQuestion(db, userId, currentPassword, question, answer);
+    clearFailures(key);
     return { ok: true };
   } catch (e) {
+    if (/incorrect/i.test(e.message)) recordFailure(key);
     return { ok: false, error: e.message };
   }
 });
@@ -349,21 +436,31 @@ handle('account:setSecurityQuestion', async (_, currentPassword, question, answe
 // password is the actual authorization check.
 handle('account:delete', async (_, password) => {
   const userId = requireUser();
-  const ok = await verifyPassword(db, userId, password);
-  if (!ok) return { ok: false, error: 'Incorrect password' };
+  const key = throttleKey('pw', userId);
+  try {
+    checkThrottle(key);
+    const ok = await verifyPassword(db, userId, password);
+    if (!ok) {
+      recordFailure(key);
+      return { ok: false, error: 'Incorrect password' };
+    }
+    clearFailures(key);
 
-  const { r2Keys } = await dataLayer.account.delete(db, userId);
+    const { r2Keys } = await dataLayer.account.delete(db, userId);
 
-  // Best-effort R2 cleanup — the DB side is already fully committed at
-  // this point, so a failure here just leaves orphaned objects in the
-  // shared bucket rather than an inconsistent account.
-  for (const key of r2Keys) {
-    try { await deleteObject(s3, process.env.R2_BUCKET_NAME, key); } catch { /* orphaned object — non-fatal */ }
+    // Best-effort R2 cleanup — the DB side is already fully committed at
+    // this point, so a failure here just leaves orphaned objects in the
+    // shared bucket rather than an inconsistent account.
+    for (const k of r2Keys) {
+      try { await deleteObject(s3, process.env.R2_BUCKET_NAME, k); } catch { /* orphaned object — non-fatal */ }
+    }
+
+    clearSession();
+    currentUser = null;
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
   }
-
-  clearSession();
-  currentUser = null;
-  return { ok: true };
 });
 
 // ─── Window & lifecycle ─────────────────────────────────────────────────
@@ -379,6 +476,9 @@ function createWindow(initialTheme, initialColorTheme) {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
       additionalArguments: [`--initial-theme=${initialTheme}`, `--initial-color-theme=${initialColorTheme}`],
     },
     backgroundColor: initialTheme === 'light' ? '#F2EFE6' : '#1B1E1A',
@@ -387,11 +487,23 @@ function createWindow(initialTheme, initialColorTheme) {
     icon: path.join(__dirname, 'assets', 'icon.png'),
   });
 
+  // Child windows inherit webPreferences (including the preload!), so a
+  // user-attached link opened via window.open() must never become an
+  // Electron window with window.api. Send it to the OS browser instead.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('file://')) e.preventDefault();
+  });
+
   mainWindow.loadFile('index.html');
   mainWindow.once('ready-to-show', () => mainWindow.show());
 }
 
 app.whenReady().then(async () => {
+  session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
   Menu.setApplicationMenu(null);
   ensureDirectories();
 
@@ -401,6 +513,7 @@ app.whenReady().then(async () => {
     accountId: process.env.R2_ACCOUNT_ID,
     accessKeyId: process.env.R2_ACCESS_KEY_ID,
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+    jurisdiction: process.env.R2_JURISDICTION,
   });
   evictIfOverLimit(getCacheDir());
 
@@ -428,19 +541,34 @@ app.on('window-all-closed', () => {
 });
 
 // ─── IPC: Window Controls ───────────────────────────────────────────────────
-ipcMain.handle('window:minimize', () => mainWindow?.minimize());
-ipcMain.handle('window:maximize', () => {
+ipcMain.handle('window:minimize', (event) => {
+  assertTrustedSender(event);
+  mainWindow?.minimize();
+});
+ipcMain.handle('window:maximize', (event) => {
+  assertTrustedSender(event);
   if (mainWindow?.isMaximized()) mainWindow.unmaximize(); else mainWindow?.maximize();
 });
-ipcMain.handle('window:close', () => mainWindow?.close());
-ipcMain.handle('window:isMaximized', () => mainWindow?.isMaximized() ?? false);
+ipcMain.handle('window:close', (event) => {
+  assertTrustedSender(event);
+  mainWindow?.close();
+});
+ipcMain.handle('window:isMaximized', (event) => {
+  assertTrustedSender(event);
+  return mainWindow?.isMaximized() ?? false;
+});
 
 // ─── IPC: Libraries ──────────────────────────────────────────────────────
 handle('libraries:getAll', () => dataLayer.libraries.getAll(db, requireUser()));
 handle('libraries:create', (_, d) => dataLayer.libraries.create(db, requireUser(), d));
-handle('libraries:update', (_, id, d) => dataLayer.libraries.update(db, id, d));
-handle('libraries:delete', (_, id) => dataLayer.libraries.delete(db, id));
+handle('libraries:update', (_, id, d) => dataLayer.libraries.update(db, requireUser(), id, d));
+handle('libraries:delete', async (_, id) => {
+  const { r2Keys } = await dataLayer.libraries.delete(db, requireUser(), id);
+  await deleteUnreferencedKeys(r2Keys);
+  return true;
+});
 handle('libraries:reorder', (_, orderedIds) => dataLayer.libraries.reorder(db, requireUser(), orderedIds));
+
 // ─── IPC: Tags (per-user) / Genres (shared) / Content Warnings (per-user) ──
 handle('tags:getAll', () => dataLayer.tags.getAll(db, requireUser()));
 handle('tags:create', (_, name) => dataLayer.tags.create(db, requireUser(), name));
@@ -470,7 +598,11 @@ handle('series:getAll', (_, filters) => dataLayer.series.getAll(db, requireUser(
 handle('series:get', (_, id) => dataLayer.series.get(db, requireUser(), id));
 handle('series:create', (_, d) => dataLayer.series.create(db, requireUser(), d));
 handle('series:update', (_, id, d) => dataLayer.series.update(db, requireUser(), id, d));
-handle('series:delete', (_, id) => dataLayer.series.delete(db, requireUser(), id));
+handle('series:delete', async (_, id) => {
+  const { r2Keys } = await dataLayer.series.delete(db, requireUser(), id);
+  await deleteUnreferencedKeys(r2Keys);
+  return true;
+});
 handle('series:transfer', (_, id, targetLibId) => dataLayer.series.transfer(db, requireUser(), id, targetLibId));
 handle('series:copy', (_, id, targetLibId, opts) => dataLayer.series.copy(db, requireUser(), id, targetLibId, opts));
 handle('series:getBookTypesAndFandoms', () => dataLayer.series.getBookTypesAndFandoms(db, requireUser()));
@@ -483,45 +615,60 @@ handle('seriesGroups:update', (_, id, d) => dataLayer.seriesGroups.update(db, re
 handle('seriesGroups:delete', (_, id) => dataLayer.seriesGroups.delete(db, requireUser(), id));
 
 // ─── IPC: Volumes ─────────────────────────────────────────────────────────
-handle('volumes:getBySeries', (_, sid) => dataLayer.volumes.getBySeries(db, sid));
-handle('volumes:get', (_, id) => dataLayer.volumes.get(db, id));
-handle('volumes:create', (_, d) => dataLayer.volumes.create(db, d));
-handle('volumes:update', (_, id, d) => dataLayer.volumes.update(db, id, d));
-handle('volumes:delete', (_, id) => dataLayer.volumes.delete(db, id));
+handle('volumes:getBySeries', async (_, sid) => { await owned.series(sid); return dataLayer.volumes.getBySeries(db, sid); });
+handle('volumes:get', async (_, id) => { await owned.child('volumes', id); return dataLayer.volumes.get(db, id); });
+handle('volumes:create', async (_, d) => { await owned.series(d.series_id); return dataLayer.volumes.create(db, d); });
+handle('volumes:update', async (_, id, d) => { await owned.child('volumes', id); return dataLayer.volumes.update(db, id, d); });
+handle('volumes:delete', async (_, id) => { await owned.child('volumes', id); return dataLayer.volumes.delete(db, id); });
 handle('volumes:getReadDatesForOwner', () => dataLayer.volumes.getReadDatesForOwner(db, requireUser()));
 
 // ─── IPC: Characters ──────────────────────────────────────────────────────
-handle('characters:getBySeries', (_, sid) => dataLayer.characters.getBySeries(db, sid));
-handle('characters:get', (_, id) => dataLayer.characters.get(db, id));
-handle('characters:create', (_, d) => dataLayer.characters.create(db, d));
-handle('characters:update', (_, id, d) => dataLayer.characters.update(db, id, d));
-handle('characters:delete', (_, id) => dataLayer.characters.delete(db, id));
+handle('characters:getBySeries', async (_, sid) => { await owned.series(sid); return dataLayer.characters.getBySeries(db, sid); });
+handle('characters:get', async (_, id) => { await owned.child('characters', id); return dataLayer.characters.get(db, id); });
+handle('characters:create', async (_, d) => { await owned.series(d.series_id); return dataLayer.characters.create(db, d); });
+handle('characters:update', async (_, id, d) => { await owned.child('characters', id); return dataLayer.characters.update(db, id, d); });
+handle('characters:delete', async (_, id) => { await owned.child('characters', id); return dataLayer.characters.delete(db, id); });
 
 // ─── IPC: Relationships ────────────────────────────────────────────────────
-handle('relationships:getBySeries', (_, sid) => dataLayer.relationships.getBySeries(db, sid));
-handle('relationships:getByCharacter', (_, cid) => dataLayer.relationships.getByCharacter(db, cid));
-handle('relationships:create', (_, d) => dataLayer.relationships.create(db, d));
-handle('relationships:update', (_, id, d) => dataLayer.relationships.update(db, id, d));
-handle('relationships:delete', (_, id) => dataLayer.relationships.delete(db, id));
+handle('relationships:getBySeries', async (_, sid) => { await owned.series(sid); return dataLayer.relationships.getBySeries(db, sid); });
+handle('relationships:getByCharacter', async (_, cid) => { await owned.child('characters', cid); return dataLayer.relationships.getByCharacter(db, cid); });
+handle('relationships:create', async (_, d) => {
+  await owned.child('characters', d.from_character_id);
+  await owned.child('characters', d.to_character_id);
+  return dataLayer.relationships.create(db, d);
+});
+handle('relationships:update', async (_, id, d) => {
+  await owned.relationship(id);
+  await owned.child('characters', d.from_character_id);
+  await owned.child('characters', d.to_character_id);
+  return dataLayer.relationships.update(db, id, d);
+});
+handle('relationships:delete', async (_, id) => { await owned.relationship(id); return dataLayer.relationships.delete(db, id); });
 
-// ─── IPC: Gallery (still local disk — R2 is a separate future step) ───────
-handle('gallery:getBySeries', (_, sid) => dataLayer.gallery.getBySeries(db, sid));
-handle('gallery:add', (_, d) => dataLayer.gallery.add(db, d));
-handle('gallery:updateCaption', (_, id, caption) => dataLayer.gallery.updateCaption(db, id, caption));
+// ─── IPC: Gallery ─────────────────────────────────────────────────────────
+handle('gallery:getBySeries', async (_, sid) => { await owned.series(sid); return dataLayer.gallery.getBySeries(db, sid); });
+handle('gallery:add', async (_, d) => { await owned.series(d.series_id); return dataLayer.gallery.add(db, d); });
+handle('gallery:updateCaption', async (_, id, caption) => { await owned.child('gallery_images', id); return dataLayer.gallery.updateCaption(db, id, caption); });
 handle('gallery:delete', async (_, id) => {
+  await owned.child('gallery_images', id);
   const row = await dataLayer.gallery.delete(db, id);
-  if (row?.image_path) await deleteObject(s3, process.env.R2_BUCKET_NAME, row.image_path);
+  if (row?.image_path) await deleteUnreferencedKeys([row.image_path]);
   return true;
 });
-handle('gallery:reorder', (_, orderedIds) => dataLayer.gallery.reorder(db, orderedIds));
+handle('gallery:reorder', async (_, orderedIds) => {
+  for (const id of orderedIds) await owned.child('gallery_images', id);
+  return dataLayer.gallery.reorder(db, orderedIds);
+});
 
 // ─── IPC: Attachments — now R2-backed ──────────────────────────────────────
-handle('attachments:getBySeries', (_, sid) => dataLayer.attachments.getBySeries(db, sid));
-ipcMain.handle('attachments:openDialog', async () => {
+handle('attachments:getBySeries', async (_, sid) => { await owned.series(sid); return dataLayer.attachments.getBySeries(db, sid); });
+ipcMain.handle('attachments:openDialog', async (event) => {
+  assertTrustedSender(event);
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile', 'multiSelections'] });
   return result.canceled ? [] : result.filePaths;
 });
 handle('attachments:add', async (_, seriesId, sourcePath) => {
+  await owned.series(seriesId);
   if (!sourcePath || !fs.existsSync(sourcePath)) return null;
   const { size } = fs.statSync(sourcePath);
   if (size > MAX_ATTACHMENT_SIZE_BYTES) {
@@ -538,88 +685,103 @@ handle('attachments:add', async (_, seriesId, sourcePath) => {
 // for images (or serves instantly from cache if already downloaded once).
 // Backward-compat: attachments added before this step have a real local
 // path stored, not an R2 key — open those directly instead.
-ipcMain.handle('attachments:open', async (_, key) => {
-  if (fs.existsSync(key)) {
-    const result = await shell.openPath(key);
-    return result === '';
+ipcMain.handle('attachments:open', async (event, key) => {
+  assertTrustedSender(event);
+  requireUser();
+  let filePath;
+  if (path.isAbsolute(key)) {
+    if (!isInside(getAttachmentsPath(), key) || !fs.existsSync(key)) return false;
+    filePath = key;
+  } else {
+    if (!ATTACH_KEY_RE.test(key)) return false;
+    filePath = await getOrDownload(getCacheDir(), key, (k) => downloadBuffer(s3, process.env.R2_BUCKET_NAME, k));
+    if (!filePath) return false;
   }
-  const filePath = await getOrDownload(getCacheDir(), key, (k) => downloadBuffer(s3, process.env.R2_BUCKET_NAME, k));
-  if (!filePath) return false;
-  const result = await shell.openPath(filePath);
-  return result === '';
+  if (RISKY_OPEN_EXTS.has(path.extname(filePath).toLowerCase())) {
+    shell.showItemInFolder(filePath); // never auto-launch executables/scripts
+    return true;
+  }
+  return (await shell.openPath(filePath)) === '';
 });
 handle('attachments:delete', async (_, id) => {
+  await owned.child('attachments', id);
   const row = await dataLayer.attachments.delete(db, id);
-  if (row?.file_path) await deleteObject(s3, process.env.R2_BUCKET_NAME, row.file_path);
+  if (row?.file_path) await deleteUnreferencedKeys([row.file_path]);
   return true;
 });
 
 // ─── IPC: Link Attachments (plain URLs, no storage involved) ──────────────
-handle('links:getBySeries', (_, sid) => dataLayer.links.getBySeries(db, sid));
-handle('links:add', (_, d) => dataLayer.links.add(db, d));
-handle('links:update', (_, id, d) => dataLayer.links.update(db, id, d));
-handle('links:delete', (_, id) => dataLayer.links.delete(db, id));
+handle('links:getBySeries', async (_, sid) => { await owned.series(sid); return dataLayer.links.getBySeries(db, sid); });
+handle('links:add', async (_, d) => { await owned.series(d.series_id); return dataLayer.links.add(db, { ...d, url: validateHttpUrl(d.url) }); });
+handle('links:update', async (_, id, d) => { await owned.child('link_attachments', id); return dataLayer.links.update(db, id, { ...d, url: validateHttpUrl(d.url) }); });
+handle('links:delete', async (_, id) => { await owned.child('link_attachments', id); return dataLayer.links.delete(db, id); });
 
 // ─── IPC: Glossary (plain term/definition pairs, no storage involved) ────
-handle('glossary:getBySeries', (_, sid) => dataLayer.glossary.getBySeries(db, sid));
-handle('glossary:add', (_, d) => dataLayer.glossary.add(db, d));
-handle('glossary:update', (_, id, d) => dataLayer.glossary.update(db, id, d));
-handle('glossary:delete', (_, id) => dataLayer.glossary.delete(db, id));
-
+handle('glossary:getBySeries', async (_, sid) => { await owned.series(sid); return dataLayer.glossary.getBySeries(db, sid); });
+handle('glossary:add', async (_, d) => { await owned.series(d.series_id); return dataLayer.glossary.add(db, d); });
+handle('glossary:update', async (_, id, d) => { await owned.child('glossary_terms', id); return dataLayer.glossary.update(db, id, d); });
+handle('glossary:delete', async (_, id) => { await owned.child('glossary_terms', id); return dataLayer.glossary.delete(db, id); });
 
 // ─── IPC: Images (covers, portraits, nav icons, gallery) — now R2-backed ───
 // `category` becomes the R2 key prefix (e.g. 'covers', 'char', 'gallery',
 // 'navicon') — matches the naming convention documented in storage/r2.js.
-ipcMain.handle('files:openImageDialog', async () => {
+ipcMain.handle('files:openImageDialog', async (event) => {
+  assertTrustedSender(event);
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'], filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] }],
   });
   return result.canceled ? null : result.filePaths[0];
 });
-ipcMain.handle('files:openImagesDialog', async () => {
+ipcMain.handle('files:openImagesDialog', async (event) => {
+  assertTrustedSender(event);
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile', 'multiSelections'], filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] }],
   });
   return result.canceled ? [] : result.filePaths;
 });
-ipcMain.handle('files:saveImage', async (_, sourcePath, category) => {
+ipcMain.handle('files:saveImage', async (event, sourcePath, category) => {
+  assertTrustedSender(event);
+  requireUser();
+  if (!ALLOWED_IMAGE_CATEGORIES.has(category)) throw new Error('Invalid image category');
   if (!sourcePath || !fs.existsSync(sourcePath)) return null;
   const { size } = fs.statSync(sourcePath);
   if (size > MAX_IMAGE_SIZE_BYTES) {
     throw new Error(`Image is too large (${formatMB(size)}) — max ${formatMB(MAX_IMAGE_SIZE_BYTES)}`);
   }
   const buffer = fs.readFileSync(sourcePath);
-  const key = makeKey(category, sourcePath);
-  const ext = path.extname(sourcePath).slice(1).toLowerCase();
-  const mime = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' }[ext] || 'application/octet-stream';
+  const mime = sniffImageMime(buffer); // trust the bytes, not the filename
+  if (!mime) throw new Error('That file is not a valid JPG, PNG, GIF, or WebP image');
+  const key = makeKey(category, `x${EXT_BY_MIME[mime]}`);
   await uploadBuffer(s3, process.env.R2_BUCKET_NAME, key, buffer, mime);
-  return key; // stored directly in DB columns like cover_image_path
+  return key;
 });
 
-ipcMain.handle('files:getImageData', async (_, key) => {
-  if (!key) return null;
+ipcMain.handle('files:getImageData', async (event, key) => {
+  assertTrustedSender(event);
+  if (!key || typeof key !== 'string') return null;
+  requireUser();
 
   const cached = getCachedImageDataUrl(key);
   if (cached !== undefined) return cached;
 
+  const mimeFor = (p) => ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' }[path.extname(p).slice(1).toLowerCase()] || 'image/jpeg');
+  let localPath = null;
 
-  if (fs.existsSync(key)) {
-    try {
-      const ext = path.extname(key).slice(1).toLowerCase();
-      const mime = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' }[ext] || 'image/jpeg';
-      const dataUrl = `data:${mime};base64,${fs.readFileSync(key).toString('base64')}`;
-      setCachedImageDataUrl(key, dataUrl);
-      return dataUrl;
-    } catch { return null; }
+  if (path.isAbsolute(key)) {
+    // Legacy pre-R2 files: only allowed from the app's own folders.
+    if (!isInside(getImagesPath(), key) && !isInside(getAttachmentsPath(), key)) return null;
+    if (!fs.existsSync(key)) return null;
+    localPath = key;
+  } else {
+    if (!IMAGE_KEY_RE.test(key) && !ATTACH_KEY_RE.test(key)) return null;
+    localPath = await getOrDownload(getCacheDir(), key, (k) => downloadBuffer(s3, process.env.R2_BUCKET_NAME, k));
+    if (!localPath) return null;
   }
-
-  const filePath = await getOrDownload(getCacheDir(), key, (k) => downloadBuffer(s3, process.env.R2_BUCKET_NAME, k));
-  if (!filePath) return null;
-  const ext = path.extname(filePath).slice(1).toLowerCase();
-  const mime = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' }[ext] || 'image/jpeg';
-  const dataUrl = `data:${mime};base64,${fs.readFileSync(filePath).toString('base64')}`;
-  setCachedImageDataUrl(key, dataUrl);
-  return dataUrl;
+  try {
+    const dataUrl = `data:${mimeFor(localPath)};base64,${fs.readFileSync(localPath).toString('base64')}`;
+    setCachedImageDataUrl(key, dataUrl);
+    return dataUrl;
+  } catch { return null; }
 });
 
 // ─── IPC: Export ──────────────────────────────────────────────────────────

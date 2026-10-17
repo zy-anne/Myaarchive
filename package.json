@@ -5,7 +5,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "audit": "npm audit --omit=dev"
   },
   "keywords": [],
   "author": "",
@@ -17,19 +18,19 @@
       "**/*",
       "!.env"
     ],
-    "extraResources": [
-      {
-        "from": ".env",
-        "to": ".env"
-      }
-    ],
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "onlyLoadAppFromAsar": true
+    },
     "win": {
       "target": "nsis"
     }
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
-    "electron": "^43.1.1",
+    "electron": "43.1.1",
     "electron-builder": "^26.15.3"
   },
   "dependencies": {

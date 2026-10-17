@@ -6,8 +6,9 @@
   <!-- Set before the stylesheet loads, using the theme main.js resolved
        pre-launch (exposed synchronously by preload.js), so the correct
        palette is active on first paint instead of flashing light-then-dark. -->
-  <script>document.documentElement.setAttribute('data-theme', window.initialTheme || 'dark');</script>
-  <script>document.documentElement.setAttribute('data-color-theme', window.initialColorTheme || 'default');</script>
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <script src="theme-init.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Personal reading library — track titles, volumes, and characters">
   <title>Myaarchive</title>
@@ -30,7 +31,7 @@
       <span class="brand-name">Myaarchive</span>
       <form id="auth-form" class="auth-form">
         <input id="auth-username" type="text" placeholder="Username" maxlength="50" autocomplete="username" required>
-        <input id="auth-password" type="password" placeholder="Password" maxlength="200" autocomplete="current-password"
+        <input id="auth-password" type="password" placeholder="Password (min 8 characters)" maxlength="200" autocomplete="current-password"
           required>
         <!-- Only shown in Sign Up mode (toggled via app.js) — optional,
              enables "Forgot password?" recovery for this account later. -->
@@ -497,7 +498,7 @@
               </div>
               <div class="stat-card stat-card-sm">
                 <div class="stat-card-icon">★</div>
-                <div class="stat-card-label">Critique</div>
+                <div class="stat-card-label">Ratings</div>
                 <div class="stat-card-value" id="stats-quick-rating">—</div>
                 <div class="stat-card-sub" id="stats-quick-rating-sub">Average Rating</div>
               </div>

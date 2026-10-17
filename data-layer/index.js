@@ -10,6 +10,8 @@
 // own tag list and status list, not a shared global one. Genres remain
 // shared/global across all accounts.
 
+const V = require('./validate');
+
 function parseSeriesRow(row) {
   if (!row) return null;
   const tags = [];
@@ -17,7 +19,7 @@ function parseSeriesRow(row) {
     for (const entry of row.tag_data.split('||')) {
       if (!entry) continue;
       const [id, name, color] = entry.split('::');
-      if (id && name) tags.push({ id: parseInt(id), name, color: color || '#4a90e2' });
+      if (id && name) tags.push({ id: parseInt(id), name, color: V.color(color, '#4a90e2') });
     }
   }
   const genres = [];
@@ -25,7 +27,7 @@ function parseSeriesRow(row) {
     for (const entry of row.genre_data.split('||')) {
       if (!entry) continue;
       const [id, name, color] = entry.split('::');
-      if (id && name) genres.push({ id: parseInt(id), name, color: color || '#b2bec3' });
+      if (id && name) genres.push({ id: parseInt(id), name, color: V.color(color, '#b2bec3') });
     }
   }
   const content_warnings = [];
@@ -56,6 +58,51 @@ async function columnNames(db, table) {
   return new Set(info.rows.map(r => r.name));
 }
 
+// ─── Ownership guards ───────────────────────────────────────────────────
+const SERIES_CHILD_TABLES = new Set(['volumes', 'characters', 'gallery_images', 'attachments', 'link_attachments', 'glossary_terms']);
+
+async function assertSeriesOwned(db, ownerId, seriesId) {
+  const row = await one(db, `
+    SELECT s.id FROM series s JOIN libraries l ON l.id = s.library_id
+    WHERE s.id = ? AND l.owner_id = ?`, [Number(seriesId), ownerId]);
+  if (!row) throw new Error('Not found');
+}
+
+async function assertChildOwned(db, ownerId, table, id) {
+  if (!SERIES_CHILD_TABLES.has(table)) throw new Error('Invalid table'); // allowlist makes the interpolation safe
+  const row = await one(db, `
+    SELECT t.id FROM ${table} t
+    JOIN series s ON s.id = t.series_id
+    JOIN libraries l ON l.id = s.library_id
+    WHERE t.id = ? AND l.owner_id = ?`, [Number(id), ownerId]);
+  if (!row) throw new Error('Not found');
+}
+
+async function assertRelationshipOwned(db, ownerId, id) {
+  const row = await one(db, `
+    SELECT r.id FROM relationships r
+    JOIN characters c ON c.id = r.from_character_id
+    JOIN series s ON s.id = c.series_id
+    JOIN libraries l ON l.id = s.library_id
+    WHERE r.id = ? AND l.owner_id = ?`, [Number(id), ownerId]);
+  if (!row) throw new Error('Not found');
+}
+
+// Before deleting an R2 object, make sure nothing else still points at it
+// (seriesCopy reuses keys, so deleting a copy's picture used to delete the
+// original's file too).
+async function isKeyReferenced(db, key) {
+  const checks = [
+    ['series', 'cover_image_path'], ['volumes', 'cover_image_path'], ['characters', 'profile_image_path'],
+    ['gallery_images', 'image_path'], ['attachments', 'file_path'], ['series_groups', 'cover_image_path'],
+    ['libraries', 'icon_image'],
+  ];
+  for (const [t, c] of checks) {
+    if (await one(db, `SELECT 1 AS x FROM ${t} WHERE ${c} = ? LIMIT 1`, [key])) return true;
+  }
+  return false;
+}
+
 // ─── Libraries ──────────────────────────────────────────────────────────
 
 async function librariesGetAll(db, ownerId) {
@@ -78,15 +125,23 @@ async function librariesCreate(db, ownerId, d) {
   return Number(r.lastInsertRowid);
 }
 
-async function librariesUpdate(db, id, d) {
-  await run(db, `UPDATE libraries SET name=?, icon=?, icon_image=? WHERE id=?`,
-    [d.name, d.icon || 'grid', d.icon_image || null, id]);
+async function librariesUpdate(db, ownerId, id, d) {
+  await run(db, `UPDATE libraries SET name=?, icon=?, icon_image=? WHERE id=? AND owner_id=?`,
+    [d.name, d.icon || 'grid', d.icon_image || null, id, ownerId]);
   return true;
 }
 
-async function librariesDelete(db, id) {
-  await run(db, `DELETE FROM libraries WHERE id = ? `, [id]);
-  return true;
+async function librariesDelete(db, ownerId, id) {
+  const lib = await one(db, `SELECT id FROM libraries WHERE id = ? AND owner_id = ?`, [id, ownerId]);
+  if (!lib) throw new Error('Category not found for this user');
+  const r2Keys = [];
+  for (const s of await q(db, `SELECT id FROM series WHERE library_id = ?`, [id])) {
+    r2Keys.push(...(await seriesDelete(db, ownerId, s.id)).r2Keys);
+  }
+  await run(db, `DELETE FROM series_group_items WHERE group_id IN (SELECT id FROM series_groups WHERE library_id = ?)`, [id]);
+  await run(db, `DELETE FROM series_groups WHERE library_id = ?`, [id]);
+  await run(db, `DELETE FROM libraries WHERE id = ? AND owner_id = ?`, [id, ownerId]);
+  return { r2Keys };
 }
 
 // Persists a new sidebar order after a drag-and-drop reorder. Scoped to
@@ -164,7 +219,7 @@ async function tagsUpdate(db, ownerId, id, d) {
   if (dupe) throw new Error('That tag already exists');
   const existing = await one(db, `SELECT id FROM tags WHERE id = ? AND owner_id = ?`, [id, ownerId]);
   if (!existing) throw new Error('Tag not found for this user');
-  await run(db, `UPDATE tags SET name=?, color=? WHERE id=? AND owner_id=?`, [name, d.color || colorForTagName(name), id, ownerId]);
+  await run(db, `UPDATE tags SET name=?, color=? WHERE id=? AND owner_id=?`, [name, V.color(d.color, colorForTagName(name)), id, ownerId]);
   return true;
 }
 
@@ -337,7 +392,11 @@ async function seriesGetAll(db, ownerId, filters = {}) {
   }
 
   const rows = await q(db, `${SERIES_SELECT} ${where} ORDER BY s.title COLLATE NOCASE`, args);
-  return rows.map(parseSeriesRow);
+  return rows.map(r => {
+    const s = parseSeriesRow(r);
+    delete s.synopsis; delete s.overall_thoughts; delete s.chapter_thoughts;
+    return s;
+  });
 }
 
 async function seriesGetBookTypesAndFandoms(db, ownerId) {
@@ -403,7 +462,25 @@ function seriesExtraArgs(data) {
   ];
 }
 
+function sanitizeSeriesInput(d) {
+  return {
+    ...d,
+    title: V.text(d.title, 300),
+    author: V.text(d.author, 200),
+    synopsis: V.text(d.synopsis, 5000),
+    overall_thoughts: d.overall_thoughts == null ? null : V.text(d.overall_thoughts, 20000),
+    chapter_thoughts: d.chapter_thoughts == null ? null : V.text(d.chapter_thoughts, 20000),
+    rating: V.intInRange(d.rating, 0, 5),
+    standalone_chapter_count: d.standalone_chapter_count ? V.intInRange(d.standalone_chapter_count, 0, 100000, null) : null,
+    artist: V.text(d.artist, 300),
+    book_type: V.text(d.book_type, 100),
+    year_published: V.text(d.year_published, 20),
+  };
+}
+
 async function seriesCreate(db, ownerId, data) {
+  data = sanitizeSeriesInput(data);
+  if (!data.title) throw new Error('Title is required');
   // Verify the target library belongs to this user before inserting.
   const lib = await one(db, `SELECT id FROM libraries WHERE id = ? AND owner_id = ?`, [data.library_id, ownerId]);
   if (!lib) throw new Error('Library not found for this user');
@@ -442,6 +519,7 @@ async function seriesCreate(db, ownerId, data) {
 }
 
 async function seriesUpdate(db, ownerId, id, data) {
+  data = sanitizeSeriesInput(data);
   const existing = await seriesGet(db, ownerId, id);
   if (!existing) throw new Error('Series not found for this user');
 
@@ -613,9 +691,29 @@ async function seriesCopy(db, ownerId, id, targetLibraryId, options = {}) {
 async function seriesDelete(db, ownerId, id) {
   const existing = await seriesGet(db, ownerId, id);
   if (!existing) throw new Error('Series not found for this user');
-  await detachSeriesFromGroups(db, id);
-  await run(db, `DELETE FROM series WHERE id = ?`, [id]);
-  return true;
+
+  const keys = [];
+  const add = (k) => { if (k) keys.push(k); };
+  add(existing.cover_image_path);
+  (await q(db, `SELECT cover_image_path AS k FROM volumes WHERE series_id = ?`, [id])).forEach(r => add(r.k));
+  (await q(db, `SELECT profile_image_path AS k FROM characters WHERE series_id = ?`, [id])).forEach(r => add(r.k));
+  (await q(db, `SELECT image_path AS k FROM gallery_images WHERE series_id = ?`, [id])).forEach(r => add(r.k));
+  (await q(db, `SELECT file_path AS k FROM attachments WHERE series_id = ?`, [id])).forEach(r => add(r.k));
+  const charIds = (await q(db, `SELECT id FROM characters WHERE series_id = ?`, [id])).map(r => r.id);
+
+  const tx = await db.transaction('write');
+  try {
+    for (const cid of charIds) {
+      await tx.execute({ sql: `DELETE FROM relationships WHERE from_character_id = ? OR to_character_id = ?`, args: [cid, cid] });
+    }
+    for (const t of ['characters', 'volumes', 'gallery_images', 'attachments', 'link_attachments', 'glossary_terms',
+      'series_tags', 'series_genres', 'series_content_warnings', 'series_group_items']) {
+      await tx.execute({ sql: `DELETE FROM ${t} WHERE series_id = ?`, args: [id] });
+    }
+    await tx.execute({ sql: `DELETE FROM series WHERE id = ?`, args: [id] });
+    await tx.commit();
+  } catch (err) { await tx.rollback(); throw err; }
+  return { r2Keys: keys };
 }
 
 // ─── Volumes ────────────────────────────────────────────────────────────
@@ -829,7 +927,7 @@ async function statusesCreate(db, ownerId, d) {
   const maxPos = await one(db, `SELECT MAX(position) as maxPos FROM statuses WHERE owner_id = ?`, [ownerId]);
   const pos = (maxPos?.maxPos ?? -1) + 1;
   const r = await run(db, `INSERT INTO statuses (owner_id, name, color, position) VALUES (?, ?, ?, ?)`,
-    [ownerId, name, d.color || '#7C93AC', pos]);
+    [ownerId, name, V.color(d.color, '#7C93AC'), pos]);
   return Number(r.lastInsertRowid);
 }
 
@@ -840,7 +938,7 @@ async function statusesUpdate(db, ownerId, id, d) {
   if (dupe) throw new Error('That status already exists');
   const existing = await one(db, `SELECT name FROM statuses WHERE id = ? AND owner_id = ?`, [id, ownerId]);
   if (!existing) throw new Error('Status not found for this user');
-  await run(db, `UPDATE statuses SET name=?, color=? WHERE id=? AND owner_id=?`, [name, d.color || '#7C93AC', id, ownerId]);
+  await run(db, `UPDATE statuses SET name=?, color=? WHERE id=? AND owner_id=?`, [name, V.color(d.color, '#7C93AC'), id, ownerId]);
   if (existing.name !== name) {
     // Only this user's series, via library ownership — never touches
     // another account's data even if names collide.
@@ -1617,4 +1715,6 @@ module.exports = {
   links: { getBySeries: linksGetBySeries, add: linksAdd, update: linksUpdate, delete: linksDelete },
   glossary: { getBySeries: glossaryGetBySeries, add: glossaryAdd, update: glossaryUpdate, delete: glossaryDelete },
   account: { delete: accountDelete },
+  isKeyReferenced,
+  guards: { series: assertSeriesOwned, child: assertChildOwned, relationship: assertRelationshipOwned },
 };

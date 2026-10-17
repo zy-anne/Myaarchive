@@ -7,6 +7,17 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs'); // pure-JS, no native build step
 
+const BCRYPT_COST = 12;
+const MIN_PASSWORD_LENGTH = 8;
+// Used so a non-existent username costs the same time as a wrong password.
+const DUMMY_HASH = bcrypt.hashSync('timing-equalizer', BCRYPT_COST);
+const DECOY_QUESTIONS = ['What was the name of your first pet?', 'What city were you born in?', 'What was your first school called?'];
+
+function assertPasswordPolicy(pw) {
+    if (!pw || pw.length < MIN_PASSWORD_LENGTH) throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+    if (Buffer.byteLength(pw) > 72) throw new Error('Password must be 72 bytes or fewer'); // bcrypt truncates beyond this
+}
+
 async function ensureUsersTable(db) {
     await db.execute(`
     CREATE TABLE IF NOT EXISTS users (
@@ -37,13 +48,13 @@ async function ensureSecurityQuestionColumns(db) {
 async function signUp(db, username, password, securityQuestion, securityAnswer) {
     username = (username || '').trim();
     if (username.length < 3) throw new Error('Username must be at least 3 characters');
-    if (!password || password.length < 4) throw new Error('Password must be at least 4 characters');
+    assertPasswordPolicy(password);
 
     const existing = await db.execute({ sql: 'SELECT id FROM users WHERE username = ?', args: [username] });
     if (existing.rows.length > 0) throw new Error('That username is taken');
 
     const id = crypto.randomUUID();
-    const hash = await bcrypt.hash(password, 10);
+    const hash = await bcrypt.hash(password, BCRYPT_COST);
 
     // Optional at sign-up — a blank question/answer just means "set this
     // up later in User Settings" rather than blocking account creation.
@@ -53,7 +64,7 @@ async function signUp(db, username, password, securityQuestion, securityAnswer) 
     const trimmedAnswer = (securityAnswer || '').trim();
     if (trimmedQuestion && trimmedAnswer) {
         questionText = trimmedQuestion;
-        answerHash = await bcrypt.hash(trimmedAnswer.toLowerCase(), 10);
+        answerHash = await bcrypt.hash(trimmedAnswer.toLowerCase(), BCRYPT_COST);
     }
 
     await db.execute({
@@ -65,10 +76,14 @@ async function signUp(db, username, password, securityQuestion, securityAnswer) 
 
 async function signIn(db, username, password) {
     username = (username || '').trim();
-    const row = (await db.execute({ sql: 'SELECT * FROM users WHERE username = ?', args: [username] })).rows[0];
-    if (!row) throw new Error('Invalid username or password');
-    const ok = await bcrypt.compare(password || '', row.password_hash);
-    if (!ok) throw new Error('Invalid username or password');
+    const row = (await db.execute({ sql: 'SELECT id, username, password_hash FROM users WHERE username = ?', args: [username] })).rows[0];
+    const ok = await bcrypt.compare(password || '', row ? row.password_hash : DUMMY_HASH);
+    if (!row || !ok) throw new Error('Invalid username or password');
+    // Upgrade old cost-10 hashes transparently on successful login.
+    if (bcrypt.getRounds(row.password_hash) < BCRYPT_COST) {
+        const upgraded = await bcrypt.hash(password, BCRYPT_COST);
+        await db.execute({ sql: 'UPDATE users SET password_hash = ? WHERE id = ?', args: [upgraded, row.id] });
+    }
     return { id: row.id, username: row.username };
 }
 
@@ -94,10 +109,10 @@ async function verifyPassword(db, userId, password) {
 // current password, same "re-verify even though already signed in" gate
 // as verifyPassword is used for elsewhere.
 async function changePassword(db, userId, currentPassword, newPassword) {
-    if (!newPassword || newPassword.length < 4) throw new Error('New password must be at least 4 characters');
+    assertPasswordPolicy(newPassword);
     const ok = await verifyPassword(db, userId, currentPassword);
     if (!ok) throw new Error('Current password is incorrect');
-    const hash = await bcrypt.hash(newPassword, 10);
+    const hash = await bcrypt.hash(newPassword, BCRYPT_COST);
     await db.execute({ sql: 'UPDATE users SET password_hash = ? WHERE id = ?', args: [hash, userId] });
     return true;
 }
@@ -108,8 +123,10 @@ async function changePassword(db, userId, currentPassword, newPassword) {
 async function getSecurityQuestion(db, username) {
     username = (username || '').trim();
     const row = (await db.execute({ sql: 'SELECT security_question FROM users WHERE username = ?', args: [username] })).rows[0];
-    if (!row || !row.security_question) return null;
-    return row.security_question;
+    if (row && row.security_question) return row.security_question;
+    // Same shape of response whether or not the account exists / has a question.
+    let h = 0; for (const c of username.toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    return DECOY_QUESTIONS[h % DECOY_QUESTIONS.length];
 }
 
 // Verifies the answer against the stored hash and, if correct, resets the
@@ -118,12 +135,12 @@ async function getSecurityQuestion(db, username) {
 // about capitalizing answers like "Fluffy" vs "fluffy".
 async function resetPasswordWithSecurityAnswer(db, username, answer, newPassword) {
     username = (username || '').trim();
-    if (!newPassword || newPassword.length < 4) throw new Error('New password must be at least 4 characters');
+    assertPasswordPolicy(newPassword);
     const row = (await db.execute({ sql: 'SELECT id, security_answer_hash FROM users WHERE username = ?', args: [username] })).rows[0];
-    if (!row || !row.security_answer_hash) throw new Error('No recovery method is set up for this account');
-    const ok = await bcrypt.compare((answer || '').trim().toLowerCase(), row.security_answer_hash);
-    if (!ok) throw new Error('That answer is incorrect');
-    const hash = await bcrypt.hash(newPassword, 10);
+    const targetHash = (row && row.security_answer_hash) ? row.security_answer_hash : DUMMY_HASH;
+    const ok = await bcrypt.compare((answer || '').trim().toLowerCase(), targetHash);
+    if (!row || !row.security_answer_hash || !ok) throw new Error('Username or answer is incorrect');
+    const hash = await bcrypt.hash(newPassword, BCRYPT_COST);
     await db.execute({ sql: 'UPDATE users SET password_hash = ? WHERE id = ?', args: [hash, row.id] });
     return true;
 }
@@ -145,7 +162,7 @@ async function setSecurityQuestion(db, userId, currentPassword, question, answer
     if (!trimmedQuestion || !trimmedAnswer) throw new Error('Both a question and answer are required');
     const ok = await verifyPassword(db, userId, currentPassword);
     if (!ok) throw new Error('Current password is incorrect');
-    const answerHash = await bcrypt.hash(trimmedAnswer.toLowerCase(), 10);
+    const answerHash = await bcrypt.hash(trimmedAnswer.toLowerCase(), BCRYPT_COST);
     await db.execute({ sql: 'UPDATE users SET security_question = ?, security_answer_hash = ? WHERE id = ?', args: [trimmedQuestion, answerHash, userId] });
     return true;
 }

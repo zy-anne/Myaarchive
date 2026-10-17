@@ -29,18 +29,34 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const crypto = require('crypto');
 const path = require('path');
 
-function createR2Client({ accountId, accessKeyId, secretAccessKey }) {
+function createR2Client({ accountId, accessKeyId, secretAccessKey, jurisdiction }) {
+    // .env values often pick up stray whitespace or quotes; a single bad
+    // character here changes the hostname and Cloudflare kills the handshake.
+    const clean = (v) => String(v || '').trim().replace(/^["']|["']$/g, '');
+    const acct = clean(accountId);
+    const jur = clean(jurisdiction).toLowerCase(); // '', 'eu', or 'fedramp'
+
+    const host = jur
+        ? `${acct}.${jur}.r2.cloudflarestorage.com`
+        : `${acct}.r2.cloudflarestorage.com`;
+
     return new S3Client({
         region: 'auto',
-        endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-        credentials: { accessKeyId, secretAccessKey },
+        endpoint: `https://${host}`,
+        forcePathStyle: true,
+        credentials: {
+            accessKeyId: clean(accessKeyId),
+            secretAccessKey: clean(secretAccessKey),
+        },
+
+        requestChecksumCalculation: 'WHEN_REQUIRED',
+        responseChecksumValidation: 'WHEN_REQUIRED',
     });
 }
-
 function makeKey(prefix, originalFileName = '') {
-    const ext = path.extname(originalFileName) || '';
-    const id = crypto.randomUUID();
-    return `${prefix}/${id}${ext}`;
+    const rawExt = path.extname(originalFileName).toLowerCase();
+    const ext = /^\.[a-z0-9]{1,8}$/.test(rawExt) ? rawExt : '';
+    return `${prefix}/${crypto.randomUUID()}${ext}`;
 }
 
 async function uploadBuffer(s3, bucket, key, buffer, contentType) {

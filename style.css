@@ -5915,3 +5915,363 @@ h3,
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Design audit pass — contrast, radius, elevation, spacing, type,
+   alignment, stress-proofing, icons. Delete this block to revert.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Contrast ─────────────────────────────────────────────────── */
+:root {
+  --text-muted: color-mix(in srgb, var(--twilight) 90%, var(--white) 10%);
+  --on-accent: var(--mysterious-depths);
+  /* ink for text on --accent fills */
+}
+
+[data-theme="dark"] {
+  --text-muted: color-mix(in srgb, var(--perrywinkle) 88%, var(--mysterious-depths) 12%);
+}
+
+/* White on periwinkle was ~2.7:1 — use dark ink on every accent fill */
+.nav-item.active,
+.icon-swatch.active,
+.filter-btn.active,
+.filter-mode-btn.active,
+.view-toggle-btn.active,
+.type-chip.active,
+.filter-count,
+.filter-btn.active .filter-count,
+.tab.active .tab-count,
+.file-icon-ext {
+  color: var(--on-accent);
+}
+
+.heatmap-cell[data-level="2"],
+.heatmap-cell[data-level="3"],
+.heatmap-cell[data-level="4"] {
+  color: var(--on-accent);
+}
+
+/* Opacity was stacking on top of muted text */
+.tag-pill,
+.sidebar-insights-label,
+.stats-streak-scope {
+  opacity: 1;
+}
+
+.empty-dim {
+  opacity: 0.8;
+}
+
+/* Tag/genre colors are arbitrary; darken tag text on light, dark ink on genres */
+[data-theme="light"] .tag-pill {
+  filter: brightness(0.7) saturate(1.1);
+}
+
+.genre-pill,
+.genre-swatch.active {
+  color: #07072A;
+}
+
+/* Hover was white-on-light in light mode (invisible) */
+.nav-customize-btn:hover {
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--text-main) 10%, transparent);
+}
+
+/* ── 2. Corner radius: controls=sm, cards/panels=md, pills=pill ──── */
+.series-card,
+.character-card,
+.character-list-row,
+.gallery-card,
+.sub-book-card,
+.file-row,
+.glossary-entry,
+.stats-milestone-card,
+.rel-list-item,
+.stats-insight-card,
+.timeline-card,
+.timeline-input-card,
+.lore-contrast-card,
+.lore-personality-card,
+.lore-notes-body,
+.lore-simple-meta,
+.status-manage-row,
+.group-item-row,
+.group-books-manager,
+.details-section,
+.transfer-book-info,
+.transfer-copy-options,
+.tag-dropdown,
+.toast,
+.vol-detail-cover,
+.standalone-cover-img,
+.gallery-detail-img {
+  border-radius: var(--radius-md);
+}
+
+/* Card cover/body halves must match the card's outer radius */
+.series-card-cover {
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.series-card-body {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+/* Small rectangular tags/badges and icon buttons → sm */
+.kind-badge,
+.book-type-badge,
+.series-card-nsfw-badge,
+.umbrella-type-badge,
+.btn-deep-dive,
+.lore-portrait-badge,
+.close-btn,
+.btn-icon-edit,
+.nav-customize-btn,
+.rel-edit-btn,
+.rel-delete-btn,
+.timeline-input-remove,
+.group-item-remove-btn,
+.heatmap-cell {
+  border-radius: var(--radius-sm);
+}
+
+/* Pills (status-badge, count-badge, filter-btn, char-role, chips) untouched.
+   .lore-portrait-card (14px) already nests concentrically around its 8px image. */
+
+/* ── 3. Elevation: depth only on things that float ───────────────── */
+:root,
+[data-theme="dark"] {
+  --shadow-glow: none;
+  --shadow-card: 0 0 0 1px var(--ring);
+  --shadow-card-hover: 0 0 0 1px var(--ring-hover);
+}
+
+:root {
+  --shadow-md: 0 8px 24px rgba(7, 7, 42, 0.12);
+}
+
+[data-theme="dark"] {
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.series-card {
+  box-shadow: none;
+}
+
+.series-card:hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+.sub-book-card:hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+.umbrella-group-card {
+  box-shadow: none;
+}
+
+.lore-portrait-card,
+.lore-portrait-badge {
+  box-shadow: none;
+}
+
+.hero-cover-wrap:hover {
+  box-shadow: none;
+}
+
+.volume-card:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-primary:hover {
+  box-shadow: none;
+}
+
+.sidebar-brand {
+  background: none;
+}
+
+#auth-gate {
+  background: var(--bg-color);
+}
+
+[data-theme="dark"] .rating-stars .star-btn.filled {
+  filter: none;
+}
+
+/* Kept on purpose: modal, drawer, dropdowns, toast, autohide sidebar,
+   toggle thumb, focus rings. They sit on top of something. */
+
+/* ── 4. Line spacing ─────────────────────────────────────────────── */
+.hero-synopsis,
+.vol-detail-text,
+.timeline-card,
+.glossary-definition {
+  line-height: 1.7;
+}
+
+.lore-notes-body,
+.lore-contrast-line,
+.lore-personality-text,
+.lore-vibes-quote,
+.umbrella-group-desc {
+  line-height: 1.65;
+}
+
+.rel-notes,
+.form-hint,
+.settings-row-desc,
+.empty-state p {
+  line-height: 1.55;
+}
+
+/* No fixed heights on any of these, so containers grow with the text. */
+
+/* ── 5. Typography hierarchy (existing fonts, weight/colour only) ── */
+.view-title,
+.hero-title,
+.series-title-cell .title-text,
+.stat-card-value,
+.stats-milestone-num {
+  font-weight: 600;
+}
+
+.hero-extra-value,
+.settings-row-label {
+  color: var(--text-main);
+  font-weight: 500;
+}
+
+.hero-author,
+.series-card-author,
+.character-list-meta,
+.sub-book-meta,
+.file-meta,
+.stat-card-sub {
+  color: var(--text-muted);
+}
+
+/* ── 6. Alignment ────────────────────────────────────────────────── */
+th.col-num,
+td.col-num {
+  text-align: right;
+  width: 64px;
+  font-variant-numeric: tabular-nums;
+}
+
+th.col-actions,
+td.col-actions {
+  width: 40px;
+  text-align: right;
+}
+
+/* Rating column stays leading-aligned on purpose (it holds stars, not digits). */
+
+/* NSFW dot sat inside the title row and pushed NSFW titles right.
+   Pull it into the cell padding so every title shares one left edge. */
+.nsfw-marker {
+  margin-left: -16px;
+}
+
+.stats-bar-row {
+  grid-template-columns: 140px 1fr minmax(34px, auto);
+}
+
+.stats-compact-cell .stats-bar-row {
+  grid-template-columns: minmax(0, 84px) 1fr minmax(26px, auto);
+}
+
+/* ── 7. Stress-proofing ──────────────────────────────────────────── */
+.series-title-cell {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  min-width: 0;
+}
+
+.title-text,
+.series-card-title,
+.hero-title,
+.char-name,
+.vol-note-body,
+.rel-target,
+.modal-header h2 {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.hero-header-details {
+  min-width: 0;
+}
+
+/* Multiword statuses wrap instead of being cut to "WAITING FO…" */
+.status-badge {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.series-card-footer {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Nothing below 10px */
+.file-icon-ext,
+.series-card-nsfw-badge {
+  font-size: 10px;
+}
+
+/* ── 8. Icons ────────────────────────────────────────────────────── */
+.nav-item>svg,
+.nav-item-icon>svg {
+  width: 16px;
+  height: 16px;
+}
+
+.btn svg,
+.view-toggle-btn svg,
+.btn-sidebar-toggle svg,
+.search-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.btn-back svg {
+  width: 16px;
+  height: 16px;
+}
+
+.nav-item svg,
+.btn svg,
+.btn-back svg,
+.view-toggle-btn svg,
+.btn-sidebar-toggle svg,
+.search-icon,
+.icon-swatch svg,
+.file-icon svg {
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+  display: block;
+}
+
+/* Window-control icons stay 12px / 2.2 stroke. Hit areas are unchanged. */
+
+.stat-card-icon {
+  opacity: 1;
+  color: var(--text-muted);
+  line-height: 0;
+}
+
+.stat-card-icon svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
