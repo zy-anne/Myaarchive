@@ -34,7 +34,7 @@
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1101.0",
+    "@aws-sdk/client-s3": "^3.1151.0",
     "@aws-sdk/s3-request-presigner": "^3.1101.0",
     "@libsql/client": "^0.17.4",
     "bcryptjs": "^2.4.3",
