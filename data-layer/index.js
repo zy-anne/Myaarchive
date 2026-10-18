@@ -12,6 +12,25 @@
 
 const V = require('./validate');
 
+const LIMITS = {
+  series: {
+    status: 50, original_language: 100, country_of_origin: 100, language_read: 100, status_country_of_origin: 100,
+    licensed_english: 10, completely_translated: 10, original_publisher: 200, english_publisher: 200, fandom: 2000,
+    date_started: 10, date_finished: 10
+  },
+  volume: { title: 300, chapter_range: 200, thoughts: 20000, chapter_notes: 20000, date_read: 10, published_date: 10 },
+  character: {
+    name: 200, role: 20, volume_appearances: 300, notes: 10000, status_role: 2000, overall_vibes: 500,
+    appears_text: 2000, reality_text: 2000, personality: 3000, age: 20, life_status: 50
+  },
+  relationship: { type: 50, label: 100, notes: 2000 },
+  glossary: { term: 200, definition: 3000 },
+  link: { label: 200 },
+  gallery: { caption: 300 },
+  library: { name: 100, icon: 30 },
+  status: { name: 50 },
+};
+
 function parseSeriesRow(row) {
   if (!row) return null;
   const tags = [];
@@ -117,6 +136,7 @@ async function librariesGetAll(db, ownerId) {
 }
 
 async function librariesCreate(db, ownerId, d) {
+  d = V.clamp(d, LIMITS.library);
   const maxPos = await one(db, `SELECT MAX(position) as maxPos FROM libraries WHERE owner_id = ?`, [ownerId]);
   const pos = (maxPos?.maxPos ?? -1) + 1;
   const r = await run(db, `
@@ -126,6 +146,7 @@ async function librariesCreate(db, ownerId, d) {
 }
 
 async function librariesUpdate(db, ownerId, id, d) {
+  d = V.clamp(d, LIMITS.library);
   await run(db, `UPDATE libraries SET name=?, icon=?, icon_image=? WHERE id=? AND owner_id=?`,
     [d.name, d.icon || 'grid', d.icon_image || null, id, ownerId]);
   return true;
@@ -197,11 +218,11 @@ function colorForTagName(name) {
 }
 
 // ─── Tags (per-user) & Genres (shared) ─────────────────────────────────
+const withSafeColor = (rows, fallback) => rows.map(r => ({ ...r, color: V.color(r.color, fallback) }));
 
 async function tagsGetAll(db, ownerId) {
-  return q(db, `SELECT * FROM tags WHERE owner_id = ? ORDER BY name COLLATE NOCASE`, [ownerId]);
+  return withSafeColor(await q(db, `SELECT * FROM tags WHERE owner_id = ? ORDER BY name COLLATE NOCASE`, [ownerId]), '#4a90e2');
 }
-
 async function tagsCreate(db, ownerId, name) {
   const trimmed = name.trim();
   await run(db, `INSERT OR IGNORE INTO tags (owner_id, name, color) VALUES (?, ?, ?)`, [ownerId, trimmed, colorForTagName(trimmed)]);
@@ -253,7 +274,7 @@ async function tagsGetUsageCounts(db, ownerId) {
 
 
 async function genresGetAll(db) {
-  return q(db, `SELECT * FROM genres ORDER BY name COLLATE NOCASE`);
+  return withSafeColor(await q(db, `SELECT * FROM genres ORDER BY name COLLATE NOCASE`), '#b2bec3');
 }
 
 // ─── Content Warnings (per-user) ───────────────────────────────────────
@@ -479,7 +500,7 @@ function sanitizeSeriesInput(d) {
 }
 
 async function seriesCreate(db, ownerId, data) {
-  data = sanitizeSeriesInput(data);
+  data = V.clamp(sanitizeSeriesInput(data), LIMITS.series);
   if (!data.title) throw new Error('Title is required');
   // Verify the target library belongs to this user before inserting.
   const lib = await one(db, `SELECT id FROM libraries WHERE id = ? AND owner_id = ?`, [data.library_id, ownerId]);
@@ -519,7 +540,7 @@ async function seriesCreate(db, ownerId, data) {
 }
 
 async function seriesUpdate(db, ownerId, id, data) {
-  data = sanitizeSeriesInput(data);
+  data = V.clamp(sanitizeSeriesInput(data), LIMITS.series);
   const existing = await seriesGet(db, ownerId, id);
   if (!existing) throw new Error('Series not found for this user');
 
@@ -723,6 +744,7 @@ async function volumesGetBySeries(db, seriesId) {
 }
 async function volumesGet(db, id) { return one(db, `SELECT * FROM volumes WHERE id = ?`, [id]); }
 async function volumesCreate(db, d) {
+  d = V.clamp(d, LIMITS.volume);
   const r = await run(db, `
     INSERT INTO volumes (series_id, volume_number, title, chapter_range, chapter_count, thoughts, chapter_notes, cover_image_path, date_read, published_date)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -731,6 +753,7 @@ async function volumesCreate(db, d) {
   return Number(r.lastInsertRowid);
 }
 async function volumesUpdate(db, id, d) {
+  d = V.clamp(d, LIMITS.volume);
   await run(db, `
     UPDATE volumes SET volume_number=?, title=?, chapter_range=?, chapter_count=?, thoughts=?, chapter_notes=?, cover_image_path=?, date_read=?, published_date=? WHERE id=?
   `, [d.volume_number, d.title || null, d.chapter_range || null, d.chapter_count || null,
@@ -756,6 +779,7 @@ async function charactersGetBySeries(db, seriesId) {
 }
 async function charactersGet(db, id) { return one(db, `SELECT * FROM characters WHERE id = ?`, [id]); }
 async function charactersCreate(db, d) {
+  d = V.clamp(d, LIMITS.character);
   const r = await run(db, `
     INSERT INTO characters (series_id, name, role, volume_appearances, notes, profile_image_path,
                             status_role, overall_vibes, appears_text, reality_text, personality,
@@ -767,6 +791,7 @@ async function charactersCreate(db, d) {
   return Number(r.lastInsertRowid);
 }
 async function charactersUpdate(db, id, d) {
+  d = V.clamp(d, LIMITS.character);
   await run(db, `
     UPDATE characters SET name=?, role=?, volume_appearances=?, notes=?, profile_image_path=?,
       status_role=?, overall_vibes=?, appears_text=?, reality_text=?, personality=?,
@@ -800,6 +825,7 @@ async function relationshipsGetByCharacter(db, charId) {
   `, [charId, charId]);
 }
 async function relationshipsCreate(db, d) {
+  d = V.clamp(d, LIMITS.relationship);
   const r = await run(db, `
     INSERT INTO relationships (from_character_id, to_character_id, type, label, is_bidirectional, notes) VALUES (?, ?, ?, ?, ?, ?)
   `, [d.from_character_id, d.to_character_id, d.type || 'Friend', d.label || null,
@@ -807,6 +833,7 @@ async function relationshipsCreate(db, d) {
   return Number(r.lastInsertRowid);
 }
 async function relationshipsUpdate(db, id, d) {
+  d = V.clamp(d, LIMITS.relationship);
   await run(db, `
     UPDATE relationships SET from_character_id=?, to_character_id=?, type=?, label=?, is_bidirectional=?, notes=? WHERE id=?
   `, [d.from_character_id, d.to_character_id, d.type || 'Friend', d.label || null,
@@ -821,6 +848,7 @@ async function galleryGetBySeries(db, seriesId) {
   return q(db, `SELECT * FROM gallery_images WHERE series_id = ? ORDER BY position, id`, [seriesId]);
 }
 async function galleryAdd(db, d) {
+  d = V.clamp(d, LIMITS.gallery);
   const maxPos = await one(db, `SELECT MAX(position) as maxPos FROM gallery_images WHERE series_id = ?`, [d.series_id]);
   const pos = (maxPos?.maxPos ?? -1) + 1;
   const r = await run(db, `
@@ -829,6 +857,7 @@ async function galleryAdd(db, d) {
   return Number(r.lastInsertRowid);
 }
 async function galleryUpdateCaption(db, id, caption) {
+  caption = V.text(caption, 300);
   await run(db, `UPDATE gallery_images SET caption=? WHERE id=?`, [caption || null, id]);
   return true;
 }
@@ -874,12 +903,14 @@ async function linksGetBySeries(db, seriesId) {
   return q(db, `SELECT * FROM link_attachments WHERE series_id = ? ORDER BY created_at DESC, id DESC`, [seriesId]);
 }
 async function linksAdd(db, d) {
+  d = V.clamp(d, LIMITS.link);
   const r = await run(db, `
     INSERT INTO link_attachments (series_id, url, label) VALUES (?, ?, ?)
   `, [d.series_id, d.url, d.label || null]);
   return Number(r.lastInsertRowid);
 }
 async function linksUpdate(db, id, d) {
+  d = V.clamp(d, LIMITS.link);
   await run(db, `UPDATE link_attachments SET url=?, label=? WHERE id=?`, [d.url, d.label || null, id]);
   return true;
 }
@@ -897,12 +928,14 @@ async function glossaryGetBySeries(db, seriesId) {
   return q(db, `SELECT * FROM glossary_terms WHERE series_id = ? ORDER BY term COLLATE NOCASE`, [seriesId]);
 }
 async function glossaryAdd(db, d) {
+  d = V.clamp(d, LIMITS.glossary);
   const r = await run(db, `
     INSERT INTO glossary_terms (series_id, term, definition) VALUES (?, ?, ?)
   `, [d.series_id, d.term, d.definition || null]);
   return Number(r.lastInsertRowid);
 }
 async function glossaryUpdate(db, id, d) {
+  d = V.clamp(d, LIMITS.glossary);
   await run(db, `UPDATE glossary_terms SET term=?, definition=? WHERE id=?`, [d.term, d.definition || null, id]);
   return true;
 }
@@ -916,10 +949,11 @@ async function glossaryDelete(db, id) {
 // a status cascades to that same user's series using the old name.
 
 async function statusesGetAll(db, ownerId) {
-  return q(db, `SELECT * FROM statuses WHERE owner_id = ? ORDER BY position, id`, [ownerId]);
+  return withSafeColor(await q(db, `SELECT * FROM statuses WHERE owner_id = ? ORDER BY position, id`, [ownerId]), '#7C93AC');
 }
 
 async function statusesCreate(db, ownerId, d) {
+  d = V.clamp(d, LIMITS.status);
   const name = (d.name || '').trim();
   if (!name) throw new Error('Status name is required');
   const dupe = await one(db, `SELECT id FROM statuses WHERE owner_id = ? AND name = ? COLLATE NOCASE`, [ownerId, name]);
@@ -932,6 +966,7 @@ async function statusesCreate(db, ownerId, d) {
 }
 
 async function statusesUpdate(db, ownerId, id, d) {
+  d = V.clamp(d, LIMITS.status);
   const name = (d.name || '').trim();
   if (!name) throw new Error('Status name is required');
   const dupe = await one(db, `SELECT id FROM statuses WHERE owner_id = ? AND name = ? COLLATE NOCASE AND id != ?`, [ownerId, name, id]);

@@ -31,7 +31,9 @@ async function getOrDownload(cacheDir, key, downloadFn) {
 
     const buffer = await downloadFn(key);
     fs.mkdirSync(cacheDir, { recursive: true });
-    fs.writeFileSync(filePath, buffer);
+    const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmp, buffer);
+    fs.renameSync(tmp, filePath);
     return filePath;
 }
 

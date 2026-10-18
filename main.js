@@ -1,15 +1,14 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, safeStorage, session } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeTheme, Menu, shell, safeStorage, session, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-// Load env vars from the packaged resources dir when running as a built
-// exe (friends running the installer never set up their own .env), or
-// from the repo root in dev.
-require('dotenv').config({
-  path: app.isPackaged
-    ? path.join(process.resourcesPath, '.env')
-    : path.join(__dirname, '.env'),
-});
+const envCandidates = [
+  path.join(app.getPath('userData'), '.env'),
+  app.isPackaged ? path.join(process.resourcesPath, '.env') : path.join(__dirname, '.env'),
+];
+for (const p of envCandidates) {
+  if (fs.existsSync(p)) { require('dotenv').config({ path: p, quiet: true }); break; }
+}
 
 const { createDesktopClient, removeLocalReplicaFiles } = require('./data-layer/client');
 const dataLayer = require('./data-layer');
@@ -66,7 +65,7 @@ function getCachedImageDataUrl(key) {
   const cached = imageDataUrlCache.get(key);
   if (cached !== undefined) {
     imageDataUrlCache.delete(key);
-    imageDataUrlCache.set(key, cached); // bump to most-recently-used
+    imageDataUrlCache.set(key, cached);
   }
   return cached;
 }
@@ -80,9 +79,9 @@ function setCachedImageDataUrl(key, dataUrl) {
   }
 }
 
-const getImagesPath = () => path.join(app.getPath('userData'), 'images'); // legacy local images — see note in files:getImageData
-const getAttachmentsPath = () => path.join(app.getPath('userData'), 'attachments'); // legacy local attachments
-const getCacheDir = () => path.join(app.getPath('userData'), 'asset-cache'); // downloaded-from-R2 cache
+const getImagesPath = () => path.join(app.getPath('userData'), 'images');
+const getAttachmentsPath = () => path.join(app.getPath('userData'), 'attachments');
+const getCacheDir = () => path.join(app.getPath('userData'), 'asset-cache');
 const getDbPath = () => path.join(app.getPath('userData'), 'library.db');
 const getSessionPath = () => path.join(app.getPath('userData'), 'session.enc');
 
@@ -302,6 +301,7 @@ function checkThrottle(key) {
   }
 }
 function recordFailure(key) {
+  if (authFailures.size > 5000) authFailures.clear();
   const rec = authFailures.get(key) || { count: 0, lockedUntil: 0 };
   rec.count++;
   if (rec.count >= 5) rec.lockedUntil = Date.now() + Math.min(15 * 60_000, 30_000 * 2 ** (rec.count - 5));
@@ -346,6 +346,7 @@ handle('auth:signIn', async (_, username, password) => {
 ipcMain.handle('auth:signOut', (event) => {
   assertTrustedSender(event);
   clearSession();
+  imageDataUrlCache.clear();
   currentUser = null;
 });
 ipcMain.handle('auth:currentUser', (event) => {
@@ -491,7 +492,7 @@ function createWindow(initialTheme, initialColorTheme) {
   // user-attached link opened via window.open() must never become an
   // Electron window with window.api. Send it to the OS browser instead.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https:\/\//i.test(url)) shell.openExternal(url);
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
   mainWindow.webContents.on('will-navigate', (e, url) => {
@@ -587,8 +588,13 @@ handle('statuses:delete', (_, id) => dataLayer.statuses.delete(db, requireUser()
 
 // ─── IPC: Settings ────────────────────────────────────────────────────────
 handle('settings:getAll', () => dataLayer.settings.getAll(db, requireUser()));
+const ALLOWED_SETTINGS = new Set(['theme', 'colorTheme', 'autoHideSidebar', 'openDetailAfterAdd', 'showNsfwContent',
+  'groupsSectionCollapsed', 'charRelsSectionCollapsed', 'seriesViewMode', 'charViewMode', 'sortField', 'sortDir',
+  'defaultStartView', 'lastOpenedLibraryId', 'annualReadingGoal']);
+
 handle('settings:set', async (_, key, value) => {
-  const r = await dataLayer.settings.set(db, requireUser(), key, value);
+  if (!ALLOWED_SETTINGS.has(key)) throw new Error('Unknown setting');
+  const r = await dataLayer.settings.set(db, requireUser(), key, String(value ?? '').slice(0, 200));
   if (key === 'theme') nativeTheme.themeSource = value === 'light' ? 'light' : 'dark';
   return r;
 });
@@ -784,6 +790,36 @@ ipcMain.handle('files:getImageData', async (event, key) => {
   } catch { return null; }
 });
 
+// ─── IPC: Share Dossier (copy text / save PNG) ───────────────────────────
+// Clipboard + save dialog live in the main process: the renderer's
+// permission handler denies everything, so navigator.clipboard isn't
+// reliable, and a save dialog gives the user control over the location.
+ipcMain.handle('share:copyText', (event, text) => {
+  assertTrustedSender(event);
+  requireUser();
+  if (typeof text !== 'string' || text.length === 0 || text.length > 20000) return false;
+  clipboard.writeText(text);
+  return true;
+});
+
+ipcMain.handle('share:saveImage', async (event, dataUrl, suggestedName) => {
+  assertTrustedSender(event);
+  requireUser();
+  const PREFIX = 'data:image/png;base64,';
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith(PREFIX)) throw new Error('Invalid image data');
+  const buf = Buffer.from(dataUrl.slice(PREFIX.length), 'base64');
+  if (buf.length === 0 || buf.length > 15 * 1024 * 1024) throw new Error('Image is empty or too large');
+
+  const safeName = path.basename(String(suggestedName || 'dossier.png')).replace(/[^\w.\-]+/g, '_');
+  const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: safeName,
+    filters: [{ name: 'PNG Image', extensions: ['png'] }],
+  });
+  if (canceled || !filePath) return false;
+  fs.writeFileSync(filePath, buf);
+  return true;
+});
+
 // ─── IPC: Export ──────────────────────────────────────────────────────────
 handle('export:json', async () => {
   const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
@@ -794,18 +830,26 @@ handle('export:json', async () => {
 
   const ownerId = requireUser();
   const libraries = await dataLayer.libraries.getAll(db, ownerId);
-  const series = await dataLayer.series.getAll(db, ownerId, {});
+  const seriesList = await dataLayer.series.getAll(db, ownerId, {});
+  const series = [];
+  for (const s of seriesList) series.push(await dataLayer.series.get(db, ownerId, s.id)); // full rows
 
-  const volumes = [], characters = [], relationships = [], galleryImages = [], attachments = [];
+  const volumes = [], characters = [], relationships = [], galleryImages = [], attachments = [], links = [], glossary = [];
   for (const s of series) {
     volumes.push(...await dataLayer.volumes.getBySeries(db, s.id));
     characters.push(...await dataLayer.characters.getBySeries(db, s.id));
     relationships.push(...await dataLayer.relationships.getBySeries(db, s.id));
     galleryImages.push(...await dataLayer.gallery.getBySeries(db, s.id));
     attachments.push(...await dataLayer.attachments.getBySeries(db, s.id));
+    links.push(...await dataLayer.links.getBySeries(db, s.id));
+    glossary.push(...await dataLayer.glossary.getBySeries(db, s.id));
   }
+  const seriesGroups = await dataLayer.seriesGroups.getAll(db, ownerId);
 
-  const data = { exportedAt: new Date().toISOString(), version: 2, libraries, series, volumes, characters, relationships, gallery_images: galleryImages, attachments };
+  const data = {
+    exportedAt: new Date().toISOString(), version: 3, libraries, series, seriesGroups, volumes, characters,
+    relationships, gallery_images: galleryImages, attachments, links, glossary
+  };
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
   return true;
 });

@@ -134,6 +134,10 @@ contextBridge.exposeInMainWorld('api', {
   data: {
     exportJson: () => invoke('export:json'),
   },
+  share: {
+    copyText: (text) => invoke('share:copyText', text),
+    saveImage: (dataUrl, name) => invoke('share:saveImage', dataUrl, name),
+  },
   windowControls: {
     minimize: () => invoke('window:minimize'),
     maximize: () => invoke('window:maximize'),

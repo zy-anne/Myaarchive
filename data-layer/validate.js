@@ -18,4 +18,10 @@ function httpUrl(v) {
   return u.toString();
 }
 
+function clamp(obj, limits) {
+  const out = { ...obj };
+  for (const [k, max] of Object.entries(limits)) if (out[k] != null) out[k] = text(out[k], max);
+  return out;
+}
+
 module.exports = { HEX_COLOR, color, text, intInRange, httpUrl };

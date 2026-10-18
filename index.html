@@ -31,8 +31,8 @@
       <span class="brand-name">Myaarchive</span>
       <form id="auth-form" class="auth-form">
         <input id="auth-username" type="text" placeholder="Username" maxlength="50" autocomplete="username" required>
-        <input id="auth-password" type="password" placeholder="Password (min 8 characters)" maxlength="200" autocomplete="current-password"
-          required>
+        <input id="auth-password" type="password" placeholder="Password (min 8 characters)" maxlength="200"
+          autocomplete="current-password" required>
         <!-- Only shown in Sign Up mode (toggled via app.js) — optional,
              enables "Forgot password?" recovery for this account later. -->
         <div class="auth-form hidden" id="signup-security-fields">
@@ -315,6 +315,17 @@
                 Library
               </button>
               <div class="header-right">
+                <button class="btn btn-ghost btn-sm" id="btn-share-series" title="Share a dossier card of this title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="5" r="3"></circle>
+                    <circle cx="6" cy="12" r="3"></circle>
+                    <circle cx="18" cy="19" r="3"></circle>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                  </svg>
+                  Share
+                </button>
                 <button class="btn btn-ghost btn-sm" id="btn-transfer-series"
                   title="Transfer or copy to another category">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1863,7 +1874,28 @@
       </div>
     </div>
   </div>
-
+  <!-- Share Dossier -->
+  <div class="overlay hidden" id="overlay-share-dossier">
+    <div class="modal modal-md" id="modal-share-dossier">
+      <div class="modal-header">
+        <h2>Share Classified Dossier</h2>
+        <button class="close-btn" data-close="overlay-share-dossier">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="dossier-stage" id="dossier-preview"></div>
+        <div class="form-group" style="margin-top: var(--sp-5);">
+          <label for="f-dossier-note">Note <span class="optional">(shown on the card — edit freely)</span></label>
+          <textarea id="f-dossier-note" rows="4" maxlength="800"
+            placeholder="A blurb, a quote, your thoughts…"></textarea>
+          <span class="char-counter" id="f-dossier-note-counter">0 / 800</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="btn-dossier-copy">Copy Text</button>
+        <button class="btn btn-primary" id="btn-dossier-download">Download Image</button>
+      </div>
+    </div>
+  </div>
   <!-- Confirm Dialog -->
   <div class="overlay hidden" id="overlay-confirm">
     <div class="modal modal-sm" id="modal-confirm">

@@ -314,6 +314,7 @@ function initCharCounters() {
   wireCharCounter('f-r-label', 100);
   wireCharCounter('f-r-notes', 2000);
   wireCharCounter('f-gallery-caption', 300);
+  wireCharCounter('f-dossier-note', 800);
 }
 
 // ─── Rating (1-5 stars) ─────────────────────────────────────────────────────
@@ -801,15 +802,7 @@ async function openUserSettingsModal() {
 
 async function handleSignOut() {
   await window.api.auth.signOut();
-  closeModal('overlay-user-settings');
-  el('app').classList.add('hidden');
-  el('auth-gate').classList.remove('hidden');
-  el('auth-username').value = '';
-  el('auth-password').value = '';
-  el('auth-gate-status').textContent = 'Signed out successfully.';
-  state.currentSeries = null;
-  state.series = [];
-  state.libraries = [];
+  window.location.reload();
 }
 
 // Triggers the main-process save dialog + full-library JSON export
@@ -1385,6 +1378,10 @@ function bindEvents() {
   });
 
   el('btn-submit-transfer').addEventListener('click', handleTransferOrCopySubmit);
+  el('btn-share-series')?.addEventListener('click', openShareDossierModal);
+  el('f-dossier-note')?.addEventListener('input', renderDossierPreview);
+  el('btn-dossier-copy')?.addEventListener('click', copyDossierText);
+  el('btn-dossier-download')?.addEventListener('click', downloadDossierImage);
 
   // Series Type (Series vs Standalone)
   document.querySelectorAll('#f-s-kind-chips .type-chip').forEach(chip => {
@@ -4391,6 +4388,265 @@ async function handleTransferOrCopySubmit() {
     }
   } catch (err) {
     toast(err.message || 'Operation failed', true);
+  }
+}
+
+// ─── Share Dossier ──────────────────────────────────────────────────────────
+// One data model (buildDossierModel) feeds three outputs: the live HTML
+// preview, the plain-text copy, and the PNG (drawn on a canvas so there's
+// no html-to-image dependency and nothing for the CSP to object to).
+
+const DOSSIER_NOTE_MAX = 800;
+let dossierSeries = null;
+let dossierUsername = '';
+
+function buildDossierModel(s, note, username) {
+  const rows = [];
+  const add = (label, value, redact = false) => {
+    const v = String(value ?? '').trim();
+    if (redact || v) rows.push({ label, value: redact ? '' : v, redact });
+  };
+
+  add('TITLE', s.title);
+  add('STATUS', s.status);
+  add('REF NO', '', true);
+  add('AUTHOR', s.author);
+  add('RELEASE', s.year_published);
+
+  if (s.kind === 'standalone') {
+    add('CHAPTERS', s.standalone_chapter_count ? `${s.standalone_chapter_count} chapters` : '');
+  } else {
+    const vols = state.volumes.length;
+    const chs = state.volumes.reduce((sum, v) => sum + (v.chapter_count || 0), 0);
+    add('VOLUMES', vols ? `${vols} volume${vols === 1 ? '' : 's'}${chs ? ` / ${chs} chapters` : ''}` : '');
+  }
+  add('GENRE', (s.genres || []).map(g => g.name).join(', '));
+
+  // Only the first couple of characters of the username survive;
+  // the rest is replaced by a bar.
+  const keep = username.length <= 2 ? 1 : 2;
+
+  return {
+    rows,
+    note: (note || '').trim(),
+    hasUser: !!username,
+    userVisible: username.slice(0, keep),
+  };
+}
+
+function currentDossierModel() {
+  return buildDossierModel(dossierSeries, el('f-dossier-note').value, dossierUsername);
+}
+
+function renderDossierPreview() {
+  if (!dossierSeries) return;
+  const m = currentDossierModel();
+  el('dossier-preview').innerHTML = `
+    <div class="dossier-stack">
+      <div class="dossier-card">
+        <div class="dossier-holes">${'<span class="dossier-hole"></span>'.repeat(7)}</div>
+        <div class="dossier-file">FILE: <span class="dossier-redact" style="width:4.6em"></span></div>
+        ${m.rows.map(row => `
+          <div class="dossier-row">
+            <span>${escapeHTML(row.label)}</span>
+            <span class="dossier-row-value">${row.redact
+      ? '<span class="dossier-redact" style="width:4.2em"></span>'
+      : escapeHTML(row.value)}</span>
+          </div>`).join('')}
+        ${m.note ? `<div class="dossier-note-label">NOTE:</div><div class="dossier-note">${escapeHTML(m.note)}</div>` : ''}
+        ${m.hasUser ? `<div class="dossier-footer">Myaarchive: @${escapeHTML(m.userVisible)}<span class="dossier-redact" style="width:3.6em"></span></div>` : ''}
+      </div>
+    </div>`;
+}
+
+async function openShareDossierModal() {
+  const s = state.currentSeries;
+  if (!s) return;
+  dossierSeries = s;
+  const user = await window.api.auth.currentUser();
+  dossierUsername = user?.username || '';
+  el('f-dossier-note').value = (s.synopsis || '').trim().slice(0, DOSSIER_NOTE_MAX);
+  renderDossierPreview();
+  openModal('overlay-share-dossier');
+  refreshCharCounters('f-dossier-note');
+}
+
+function dossierToText(m) {
+  const BAR = '██████';
+  const lines = ['CLASSIFIED DOSSIER', `FILE: ${BAR}`, ''];
+  m.rows.forEach(row => lines.push(`${row.label.padEnd(8)}: ${row.redact ? BAR : row.value}`));
+  if (m.note) lines.push('', 'NOTE:', m.note);
+  if (m.hasUser) lines.push('', `Myaarchive: @${m.userVisible}${BAR}`);
+  return lines.join('\n');
+}
+
+async function copyDossierText() {
+  if (!dossierSeries) return;
+  try {
+    const ok = await window.api.share.copyText(dossierToText(currentDossierModel()));
+    toast(ok ? 'Dossier copied to clipboard' : "Couldn't copy", !ok);
+  } catch (e) {
+    toast(e.message || "Couldn't copy", true);
+  }
+}
+
+// ── Canvas rendering (PNG export) ──────────────────────────────────────
+
+// Word-wraps `text` to maxWidth using the ctx's current font; hard-breaks a
+// single word that's wider than a whole line (long names, CJK with no spaces).
+function wrapCanvasText(ctx, text, maxWidth) {
+  const out = [];
+  for (const para of String(text).split('\n')) {
+    if (!para.trim()) { out.push(''); continue; }
+    let line = '';
+    for (const word of para.split(/\s+/)) {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width <= maxWidth) { line = test; continue; }
+      if (line) out.push(line);
+      let chunk = '';
+      for (const ch of word) {
+        if (chunk && ctx.measureText(chunk + ch).width > maxWidth) { out.push(chunk); chunk = ch; }
+        else chunk += ch;
+      }
+      line = chunk;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+function drawDossier(ctx, m, H) {
+  const W = 1200, cardX = 70, cardY = 40, cardW = 1090, padX = 80;
+  const innerX = cardX + padX, innerW = cardW - padX * 2;
+  const SERIF = '"Cormorant Garamond", Fraunces, serif';
+  const MONO = '"IBM Plex Mono", monospace';
+  const INK = '#23241f';
+  const BAR = '#111111';
+  const cardH = H - cardY * 2;
+
+  // Draws a redaction bar, then restores the ink colour for the next text.
+  const bar = (x, top, w, h) => {
+    ctx.fillStyle = BAR;
+    ctx.beginPath(); ctx.roundRect(x, top, w, h, 4); ctx.fill();
+    ctx.fillStyle = INK;
+  };
+
+  // stage + back sheet + card
+  ctx.fillStyle = '#383a35';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#ecebe0';
+  ctx.beginPath(); ctx.roundRect(24, cardY + 44, cardW, cardH - 40, 8); ctx.fill();
+  ctx.fillStyle = '#f8f6ee';
+  ctx.beginPath(); ctx.roundRect(cardX, cardY, cardW, cardH, 8); ctx.fill();
+
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+
+  // punch holes
+  let y = cardY + 62;
+  ctx.fillStyle = '#383a35';
+  for (let i = 0; i < 7; i++) {
+    const cx = innerX + 20 + i * ((innerW - 40) / 6);
+    ctx.beginPath(); ctx.arc(cx, y, 20, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = INK;
+
+  // FILE line — label, then a redaction bar instead of the code
+  y += 118;
+  ctx.font = `700 38px ${MONO}`;
+  ctx.letterSpacing = '8px';
+  const fileLabel = 'FILE:';
+  ctx.fillText(fileLabel, innerX, y);
+  bar(innerX + ctx.measureText(fileLabel).width + 24, y - 36, 190, 50);
+  y += 84;
+
+  // key/value rows
+  const labelW = 270;
+  ctx.font = `600 34px ${SERIF}`;
+  ctx.letterSpacing = '3px';
+  for (const row of m.rows) {
+    ctx.fillText(row.label, innerX, y);
+    ctx.fillText(':', innerX + labelW - 14, y);
+    if (row.redact) {
+      bar(innerX + labelW + 6, y - 34, 210, 44);
+      y += 48 + 28;
+      continue;
+    }
+    const lines = wrapCanvasText(ctx, row.value.toUpperCase(), innerW - labelW - 24);
+    lines.forEach((ln, i) => ctx.fillText(ln, innerX + labelW + 6, y + i * 48));
+    y += Math.max(1, lines.length) * 48 + 28;
+  }
+
+  // note
+  if (m.note) {
+    ctx.font = `600 34px ${SERIF}`;
+    ctx.letterSpacing = '3px';
+    ctx.fillText('NOTE:', innerX, y);
+    y += 60;
+    ctx.font = `500 37px ${SERIF}`;
+    ctx.letterSpacing = '0px';
+    for (const ln of wrapCanvasText(ctx, m.note, innerW)) {
+      if (ln) ctx.fillText(ln, innerX, y);
+      y += 62;
+    }
+  }
+
+  // footer — "Myaarchive: @Ma" followed by a bar, centred as one unit
+  if (m.hasUser) {
+    y += 14;
+    ctx.font = `italic 500 28px ${SERIF}`;
+    ctx.letterSpacing = '1px';
+    const prefix = `Myaarchive: @${m.userVisible}`;
+    const textW = ctx.measureText(prefix).width;
+    const barW = 120;
+    const startX = cardX + cardW / 2 - (textW + barW) / 2;
+    ctx.fillStyle = '#6b6a60';
+    ctx.fillText(prefix, startX, y + 20);
+    bar(startX + textW + 2, y - 4, barW, 32);
+    y += 20;
+  }
+
+  return y + 56; // card bottom
+}
+async function renderDossierCanvas(m) {
+  // Make sure the webfonts are actually loaded before drawing; otherwise
+  // the canvas silently uses the fallback font.
+  await Promise.all([
+    '600 34px "Cormorant Garamond"',
+    '500 37px "Cormorant Garamond"',
+    'italic 500 28px "Cormorant Garamond"',
+    '700 38px "IBM Plex Mono"',
+  ].map(f => document.fonts.load(f).catch(() => { })));
+
+  const scratch = document.createElement('canvas');
+  scratch.width = 1200;
+  scratch.height = 6000;
+  const bottom = drawDossier(scratch.getContext('2d'), m, 6000);
+
+  const H = Math.ceil(bottom) + 40;
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = H;
+  drawDossier(canvas.getContext('2d'), m, H);
+  return canvas;
+}
+
+async function downloadDossierImage() {
+  if (!dossierSeries) return;
+  const btn = el('btn-dossier-download');
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Rendering…';
+  try {
+    const canvas = await renderDossierCanvas(currentDossierModel());
+    const safe = (dossierSeries.title || '').replace(/[^\w\-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 50) || 'dossier';
+    const saved = await window.api.share.saveImage(canvas.toDataURL('image/png'), `dossier_${safe}.png`);
+    if (saved) toast('Dossier image saved'); // false just means the save dialog was canceled
+  } catch (e) {
+    toast(e.message || 'Could not save image', true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
   }
 }
 

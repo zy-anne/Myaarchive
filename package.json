@@ -12,7 +12,7 @@
   "author": "",
   "license": "ISC",
   "build": {
-    "appId": "com.yourname.myaarchive",
+    "appId": "com.maomao.myaarchive",
     "productName": "Myaarchive",
     "files": [
       "**/*",

@@ -47,7 +47,7 @@ async function ensureSecurityQuestionColumns(db) {
 
 async function signUp(db, username, password, securityQuestion, securityAnswer) {
     username = (username || '').trim();
-    if (username.length < 3) throw new Error('Username must be at least 3 characters');
+    if (username.length < 3 || username.length > 50) throw new Error('Username must be 3–50 characters');
     assertPasswordPolicy(password);
 
     const existing = await db.execute({ sql: 'SELECT id FROM users WHERE username = ?', args: [username] });
